@@ -1,0 +1,50 @@
+﻿# Fichiers binaires et objets compilés
+**/bin/
+**/obj/
+
+# Fichiers de build Rider/Visual Studio
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.vcxproj.user
+
+# Auto-generated files
+*.log
+*.cache
+*.db
+*.pdb
+*.ilk
+*.exe
+*.dll
+
+# Répertoires .vs (Visual Studio)
+.vs/
+
+/publish
+
+# Fichiers NuGet
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Rider
+.idea/
+*.DotSettings.user
+
+# Windows spécifiques
+Thumbs.db
+Desktop.ini
+
+# macOS spécifiques (si jamais tu devs sur Mac un jour 😄)
+.DS_Store
+
+# Linux spécifiques
+*~
+
+# fichiers de configuration temporaires
+*.tmp
+*.bak
+*.swp
