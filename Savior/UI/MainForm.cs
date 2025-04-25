@@ -12,8 +12,6 @@ using System.Threading.Tasks;
 
 namespace Savior.UI
 {
-    
-    
     public partial class MainForm : Form
     {
         private HardwareMonitorService _hardwareMonitor;
@@ -26,7 +24,7 @@ namespace Savior.UI
         private string _windowsLicenseType;
         private string _windowsProductKeyLast5;
 
-        
+
         private System.Windows.Forms.CheckBox checkBoxVLC;
         private System.Windows.Forms.CheckBox checkBox7ZIP;
         private System.Windows.Forms.CheckBox checkBoxChrome;
@@ -38,7 +36,7 @@ namespace Savior.UI
         private System.Windows.Forms.CheckBox checkBoxSteam;
         private System.Windows.Forms.CheckBox checkBoxDiscord;
 
-        
+
         private System.Windows.Forms.Panel sidebar;
         private System.Windows.Forms.Button btnGeneral;
         private System.Windows.Forms.Button btnBSOD;
@@ -98,16 +96,21 @@ namespace Savior.UI
             if (IsInDesignMode())
                 return;
 
-            InitializeServices();
-            LoadSystemInfo();
+            InitializeServices(); 
+            // LoadSystemInfo();
             RefreshTemperatures();
 
-            await CheckWindowsActivationStatusAsync();
-
-            var timer = new System.Windows.Forms.Timer { Interval = 1000 };
-            timer.Tick += (s, ev) => RefreshTemperatures();
+            var timer = new System.Windows.Forms.Timer { Interval = 500 };
+            timer.Tick += (_, _) => RefreshTemperatures();
             timer.Start();
+
+            _ = Task.Run(async () =>
+            {
+                await CheckWindowsActivationStatusAsync();
+                Invoke(() => { toolStripStatusLabelWindows.Text = _windowsActivationStatus; });
+            });
         }
+
 
         private void ShowPanel(Panel panel)
         {
@@ -147,22 +150,32 @@ namespace Savior.UI
 
         private void RefreshTemperatures()
         {
-            if (IsInDesignMode())
-                return;
+            Console.WriteLine(">>> Refreshing temps...");
 
             float cpuRealTemp = _hardwareMonitor.GetCpuRealTemperature();
-            labelCpuTemp.Text = "CPU : " + cpuRealTemp.ToString("F1") + " °C";
-
+            Console.WriteLine("CPU TEMP: " + cpuRealTemp);
 
             var gpuTemps = _hardwareMonitor.GetGpuTemperatures();
-            labelGpuTemp.Text = gpuTemps.Count > 0
-                ? string.Join("  ", gpuTemps.Select(t => $"GPU: {t.Value} °C"))
+            var gpuTempText = gpuTemps.Count > 0
+                ? string.Join("  ", gpuTemps.Select(t => $"GPU: {t.Value:F1} °C"))
                 : "GPU: 0.0 °C";
 
-            // Mettre à jour la barre d'état
-            toolStripStatusLabelCpuTemp.Text = labelCpuTemp.Text;
-            toolStripStatusLabelGpuTemp.Text = labelGpuTemp.Text;
-            toolStripStatusLabelWindows.Text = _windowsActivationStatus;
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() =>
+                {
+                    labelCpuTemp.Text = $"CPU: {cpuRealTemp:F1} °C";
+                    labelGpuTemp.Text = gpuTempText;
+                }));
+            }
+            else
+            {
+                labelCpuTemp.Text = $"CPU: {cpuRealTemp:F1} °C";
+                labelGpuTemp.Text = gpuTempText;
+            }
+
+            if (float.IsNaN(cpuRealTemp))
+                Console.WriteLine("⚠️ Température CPU non trouvée");
         }
 
 
@@ -365,7 +378,8 @@ namespace Savior.UI
                 string arguments = "-NoExit -Command \"";
 
                 if (checkBoxVLC != null && checkBoxVLC.Checked)
-                    arguments += "winget install --id VideoLAN.VLC -e --silent --accept-package-agreements --accept-source-agreements;\n";
+                    arguments +=
+                        "winget install --id VideoLAN.VLC -e --silent --accept-package-agreements --accept-source-agreements;\n";
                 if (checkBox7ZIP != null && checkBox7ZIP.Checked)
                     arguments += "winget install --id 7zip.7zip -e; ";
                 if (checkBoxChrome != null && checkBoxChrome.Checked)
@@ -440,6 +454,8 @@ namespace Savior.UI
             checkBoxLibreOffice = new System.Windows.Forms.CheckBox();
             checkBoxChrome = new System.Windows.Forms.CheckBox();
             InstallSelection = new System.Windows.Forms.Button();
+            labelCpuTemp = new System.Windows.Forms.Label();
+            labelGpuTemp = new System.Windows.Forms.Label();
             AllTabs.SuspendLayout();
             TabSoftwares.SuspendLayout();
             groupBox4.SuspendLayout();
@@ -456,7 +472,7 @@ namespace Savior.UI
             AllTabs.Location = new System.Drawing.Point(12, 12);
             AllTabs.Name = "AllTabs";
             AllTabs.SelectedIndex = 0;
-            AllTabs.Size = new System.Drawing.Size(873, 625);
+            AllTabs.Size = new System.Drawing.Size(873, 596);
             AllTabs.TabIndex = 0;
             // 
             // TabGeneral
@@ -464,7 +480,7 @@ namespace Savior.UI
             TabGeneral.Location = new System.Drawing.Point(4, 24);
             TabGeneral.Name = "TabGeneral";
             TabGeneral.Padding = new System.Windows.Forms.Padding(3);
-            TabGeneral.Size = new System.Drawing.Size(865, 597);
+            TabGeneral.Size = new System.Drawing.Size(865, 568);
             TabGeneral.TabIndex = 0;
             TabGeneral.Text = "General";
             TabGeneral.UseVisualStyleBackColor = true;
@@ -479,7 +495,7 @@ namespace Savior.UI
             TabSoftwares.Location = new System.Drawing.Point(4, 24);
             TabSoftwares.Name = "TabSoftwares";
             TabSoftwares.Padding = new System.Windows.Forms.Padding(3);
-            TabSoftwares.Size = new System.Drawing.Size(865, 597);
+            TabSoftwares.Size = new System.Drawing.Size(865, 568);
             TabSoftwares.TabIndex = 1;
             TabSoftwares.Text = "Softwares";
             TabSoftwares.UseVisualStyleBackColor = true;
@@ -488,7 +504,7 @@ namespace Savior.UI
             // 
             groupBox4.Controls.Add(checkBoxSteam);
             groupBox4.Controls.Add(checkBoxDiscord);
-            groupBox4.Location = new System.Drawing.Point(338, 155);
+            groupBox4.Location = new System.Drawing.Point(660, 155);
             groupBox4.Name = "groupBox4";
             groupBox4.Size = new System.Drawing.Size(155, 334);
             groupBox4.TabIndex = 14;
@@ -546,7 +562,7 @@ namespace Savior.UI
             // 
             groupBox2.Controls.Add(checkBox7ZIP);
             groupBox2.Controls.Add(checkBoxSublimeText);
-            groupBox2.Location = new System.Drawing.Point(177, 155);
+            groupBox2.Location = new System.Drawing.Point(338, 155);
             groupBox2.Name = "groupBox2";
             groupBox2.Size = new System.Drawing.Size(155, 334);
             groupBox2.TabIndex = 12;
@@ -561,7 +577,6 @@ namespace Savior.UI
             checkBox7ZIP.TabIndex = 5;
             checkBox7ZIP.Text = "7ZIP";
             checkBox7ZIP.UseVisualStyleBackColor = true;
-            checkBox7ZIP.CheckedChanged += checkBox7ZIP_CheckedChanged;
             // 
             // checkBoxSublimeText
             // 
@@ -580,7 +595,7 @@ namespace Savior.UI
             groupBox1.Controls.Add(checkBoxChrome);
             groupBox1.Location = new System.Drawing.Point(16, 155);
             groupBox1.Name = "groupBox1";
-            groupBox1.Size = new System.Drawing.Size(155, 334);
+            groupBox1.Size = new System.Drawing.Size(316, 334);
             groupBox1.TabIndex = 11;
             groupBox1.TabStop = false;
             groupBox1.Text = "Setup de base";
@@ -613,19 +628,18 @@ namespace Savior.UI
             // 
             checkBoxLibreOffice.Checked = true;
             checkBoxLibreOffice.CheckState = System.Windows.Forms.CheckState.Checked;
-            checkBoxLibreOffice.Location = new System.Drawing.Point(6, 82);
+            checkBoxLibreOffice.Location = new System.Drawing.Point(147, 22);
             checkBoxLibreOffice.Name = "checkBoxLibreOffice";
             checkBoxLibreOffice.Size = new System.Drawing.Size(104, 24);
             checkBoxLibreOffice.TabIndex = 3;
             checkBoxLibreOffice.Text = "Libre Office";
             checkBoxLibreOffice.UseVisualStyleBackColor = true;
-            checkBoxLibreOffice.CheckedChanged += checkBoxLibreOffice_CheckedChanged;
             // 
             // checkBoxChrome
             // 
             checkBoxChrome.Checked = true;
             checkBoxChrome.CheckState = System.Windows.Forms.CheckState.Checked;
-            checkBoxChrome.Location = new System.Drawing.Point(6, 112);
+            checkBoxChrome.Location = new System.Drawing.Point(147, 52);
             checkBoxChrome.Name = "checkBoxChrome";
             checkBoxChrome.Size = new System.Drawing.Size(104, 24);
             checkBoxChrome.TabIndex = 4;
@@ -642,9 +656,29 @@ namespace Savior.UI
             InstallSelection.UseVisualStyleBackColor = true;
             InstallSelection.Click += BtnOpenPowerShell_Click;
             // 
+            // labelCpuTemp
+            // 
+            labelCpuTemp.AccessibleName = "labelCpuTemp";
+            labelCpuTemp.Location = new System.Drawing.Point(16, 611);
+            labelCpuTemp.Name = "labelCpuTemp";
+            labelCpuTemp.Size = new System.Drawing.Size(100, 16);
+            labelCpuTemp.TabIndex = 1;
+            labelCpuTemp.Text = "CPU : -- °C";
+            // 
+            // labelGpuTemp
+            // 
+            labelGpuTemp.AccessibleName = "labelGpuTemp";
+            labelGpuTemp.Location = new System.Drawing.Point(16, 627);
+            labelGpuTemp.Name = "labelGpuTemp";
+            labelGpuTemp.Size = new System.Drawing.Size(100, 16);
+            labelGpuTemp.TabIndex = 2;
+            labelGpuTemp.Text = "GPU : -- °C";
+            // 
             // MainForm
             // 
             ClientSize = new System.Drawing.Size(897, 649);
+            Controls.Add(labelGpuTemp);
+            Controls.Add(labelCpuTemp);
             Controls.Add(AllTabs);
             AllTabs.ResumeLayout(false);
             TabSoftwares.ResumeLayout(false);
@@ -654,6 +688,8 @@ namespace Savior.UI
             groupBox1.ResumeLayout(false);
             ResumeLayout(false);
         }
+
+        private System.Windows.Forms.Label label1;
 
         private System.Windows.Forms.GroupBox groupBox3;
         private System.Windows.Forms.GroupBox groupBox4;
@@ -667,7 +703,5 @@ namespace Savior.UI
         private System.Windows.Forms.TabControl AllTabs;
         private System.Windows.Forms.TabPage TabGeneral;
         private System.Windows.Forms.TabPage TabSoftwares;
-
-        
     }
 }

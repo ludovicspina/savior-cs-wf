@@ -17,7 +17,7 @@ namespace Savior.Services
             computer.Open();
         }
 
-        public float GetCpuAverageTemperature()
+        public float G()
         {
             List<float?> temps = new List<float?>();
             foreach (var hardware in computer.Hardware)
@@ -45,8 +45,7 @@ namespace Savior.Services
         
         public float GetCpuRealTemperature()
         {
-            float? cpuDieTemp = null;
-            float? core1Temp = null;
+            List<float> temps = new();
 
             foreach (var hardware in computer.Hardware)
             {
@@ -57,21 +56,16 @@ namespace Savior.Services
                     {
                         if (sensor.SensorType == SensorType.Temperature && sensor.Value.HasValue)
                         {
-                            if (sensor.Name.Contains("CPU Die", StringComparison.OrdinalIgnoreCase))
-                            {
-                                cpuDieTemp = sensor.Value;
-                            }
-                            else if (sensor.Name.Contains("Core #1", StringComparison.OrdinalIgnoreCase))
-                            {
-                                core1Temp = sensor.Value;
-                            }
+                            Console.WriteLine($"[CPU SENSOR] {sensor.Name} = {sensor.Value.Value} °C");
+                            temps.Add(sensor.Value.Value);
                         }
                     }
                 }
             }
 
-            return cpuDieTemp ?? core1Temp ?? float.NaN;
+            return temps.Count > 0 ? temps.Max() : float.NaN;
         }
+
 
 
         public Dictionary<string, float?> GetGpuTemperatures()
