@@ -22,6 +22,7 @@
 .vs/
 
 /publish
+/Savior/Scripts
 
 # Fichiers NuGet
 *.nupkg

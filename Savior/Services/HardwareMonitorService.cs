@@ -45,7 +45,9 @@ namespace Savior.Services
         
         public float GetCpuRealTemperature()
         {
-            List<float> temps = new();
+            float? cpuPackageTemp = null;
+            float? cpuTctlTdieTemp = null;
+            List<float> allTemps = new();
 
             foreach (var hardware in computer.Hardware)
             {
@@ -57,14 +59,32 @@ namespace Savior.Services
                         if (sensor.SensorType == SensorType.Temperature && sensor.Value.HasValue)
                         {
                             Console.WriteLine($"[CPU SENSOR] {sensor.Name} = {sensor.Value.Value} °C");
-                            temps.Add(sensor.Value.Value);
+
+                            string sensorName = sensor.Name.ToLowerInvariant();
+
+                            if (sensorName.Contains("package"))
+                                cpuPackageTemp = sensor.Value;
+
+                            if (sensorName.Contains("tctl") || sensorName.Contains("tdie"))
+                                cpuTctlTdieTemp = sensor.Value;
+
+                            if (!sensorName.Contains("distance")) // Ignore les distances to TjMax
+                                allTemps.Add(sensor.Value.Value);
                         }
                     }
                 }
             }
 
-            return temps.Count > 0 ? temps.Max() : float.NaN;
+            // Priorité :
+            if (cpuPackageTemp.HasValue)
+                return cpuPackageTemp.Value;
+
+            if (cpuTctlTdieTemp.HasValue)
+                return cpuTctlTdieTemp.Value;
+
+            return allTemps.Count > 0 ? allTemps.Max() : float.NaN;
         }
+
 
 
 

@@ -19,11 +19,65 @@ namespace Savior.UI
         private BsodEventService _bsodService;
         private ProcessScannerService _processScanner;
 
+        private System.Windows.Forms.Timer dotsTimer;
+        private int dotsCount = 0;
+
+        private System.Windows.Forms.Button buttonActivation;
+
+        private List<string> bloatwareApps = new List<string>
+        {
+            "Microsoft.3DBuilder",
+            "Microsoft.XboxApp",
+            "Microsoft.GetHelp",
+            "Microsoft.Getstarted",
+            "Microsoft.MicrosoftSolitaireCollection",
+            "Microsoft.People",
+            "Microsoft.SkypeApp",
+            "Microsoft.MicrosoftOfficeHub",
+            "Microsoft.MSPaint", // facultatif
+            "Microsoft.OneConnect",
+            "Microsoft.WindowsMaps",
+            "Microsoft.ZuneMusic",
+            "Microsoft.ZuneVideo",
+            "Microsoft.BingWeather",
+            "Microsoft.BingNews",
+            "Microsoft.BingFinance",
+            "Microsoft.BingSports",
+            "Microsoft.MicrosoftStickyNotes",
+            "Microsoft.WindowsFeedbackHub"
+        };
+
+        private List<string> uselessServices = new List<string>
+        {
+            "DiagTrack", // Connected User Experience (Télémétrie)
+            "dmwappushservice", // Push Notifications (inutile pour 99% des PC)
+            "RetailDemo", // Retail Demo Service
+            "MapsBroker", // Cartes Windows
+            "XblGameSave", // Xbox Live Game Save
+            "XboxNetApiSvc", // Xbox Live Networking
+            "Fax", // Service de fax
+            "WMPNetworkSvc" // Windows Media Player Network Sharing Service
+        };
+
+
         private string _windowsActivationStatus;
         private string _windowsVersion;
         private string _windowsLicenseType;
         private string _windowsProductKeyLast5;
 
+        private System.Windows.Forms.Label labelCPURef2;
+        private System.Windows.Forms.Label labelCPURef;
+        private System.Windows.Forms.Label labelGPURef2;
+        private System.Windows.Forms.Label labelGPURef;
+        private System.Windows.Forms.Label labelRAM;
+        private System.Windows.Forms.Label labelCPUCores;
+        private System.Windows.Forms.Label labelDisk;
+
+
+        private System.Windows.Forms.CheckedListBox checkedListBoxServices;
+        private System.Windows.Forms.CheckedListBox checkedListBoxApps;
+        private System.Windows.Forms.Button buttonOptimisation;
+        private System.Windows.Forms.Button buttonBloatWare;
 
         private System.Windows.Forms.CheckBox checkBoxVLC;
         private System.Windows.Forms.CheckBox checkBox7ZIP;
@@ -36,6 +90,9 @@ namespace Savior.UI
         private System.Windows.Forms.CheckBox checkBoxSteam;
         private System.Windows.Forms.CheckBox checkBoxDiscord;
 
+        private System.Windows.Forms.Button buttonWinUpdate;
+
+        private System.Windows.Forms.Label labelWindowsActivation;
 
         private System.Windows.Forms.Panel sidebar;
         private System.Windows.Forms.Button btnGeneral;
@@ -45,9 +102,6 @@ namespace Savior.UI
         private System.Windows.Forms.Button btnWindows;
         private System.Windows.Forms.Panel panelGeneral;
         private System.Windows.Forms.Label labelCPUName;
-        private System.Windows.Forms.Label labelCPUCores;
-        private System.Windows.Forms.Label labelRAM;
-        private System.Windows.Forms.Label labelDisk;
         private System.Windows.Forms.Label labelGPU;
         private System.Windows.Forms.Label labelCpuTemp;
         private System.Windows.Forms.Label labelGpuTemp;
@@ -93,22 +147,203 @@ namespace Savior.UI
 
         private async void MainForm_Load(object? sender, EventArgs e)
         {
+            dotsTimer = new System.Windows.Forms.Timer();
+            dotsTimer.Interval = 500; // toutes les 500 ms
+            dotsTimer.Tick += (s, e) => AnimateDots();
+            dotsTimer.Start();
+
+
             if (IsInDesignMode())
                 return;
 
-            InitializeServices(); 
-            // LoadSystemInfo();
+            InitializeServices();
             RefreshTemperatures();
+            LoadOptimizationLists();
 
             var timer = new System.Windows.Forms.Timer { Interval = 500 };
             timer.Tick += (_, _) => RefreshTemperatures();
             timer.Start();
 
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    var cpu = _systemInfo.GetCpuInfo();
+                    var gpu = _systemInfo.GetGpuInfo();
+                    var ram = _systemInfo.GetRamInfo();
+                    var disk = _systemInfo.GetDiskInfo();
+
+                    Console.WriteLine(disk);
+
+
+                    Invoke(() =>
+                    {
+                        labelCPURef.Text = cpu.Name;
+                        labelCPURef2.Text = cpu.Name;
+                        labelCPUCores.Text =
+                            $"Cœurs logiques : {cpu.LogicalCores} | Cœurs physiques : {cpu.PhysicalCores}";
+                        labelRAM.Text = "RAM installée : " + ram + " Go";
+                        labelDisk.Text = "Disques :\r\n" + disk;
+                        labelGPURef.Text = gpu;
+                        labelGPURef2.Text = gpu;
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Erreur chargement info système : " + ex.Message);
+                }
+            });
+
             _ = Task.Run(async () =>
             {
-                await CheckWindowsActivationStatusAsync();
-                Invoke(() => { toolStripStatusLabelWindows.Text = _windowsActivationStatus; });
+                try
+                {
+                    Console.WriteLine(">> Lancement de CheckWindowsActivationStatusAsync...");
+
+                    await CheckWindowsActivationStatusAsync(); // 🔥 1) On attend vraiment la fin du check
+
+                    Console.WriteLine(">> Fin de CheckWindowsActivationStatusAsync !");
+
+                    Invoke(() =>
+                    {
+                        if (dotsTimer != null)
+                            dotsTimer.Stop(); // 🔥 2) Seulement ici on stoppe l'animation dots
+
+                        if (toolStripStatusLabelWindows != null)
+                            toolStripStatusLabelWindows.Text = _windowsActivationStatus;
+                        if (labelWindowsActivation != null)
+                            labelWindowsActivation.Text = $"Windows : {_windowsActivationStatus}";
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Invoke(() =>
+                    {
+                        if (labelWindowsActivation != null)
+                            labelWindowsActivation.Text = $"Erreur : {ex.Message}";
+                        else
+                            Console.WriteLine($"Erreur (pas de label dispo) : {ex.Message}");
+                    });
+                }
             });
+        }
+
+
+        private void LoadOptimizationLists()
+        {
+            // Pour les applications
+            checkedListBoxApps.Items.Clear();
+            foreach (var app in bloatwareApps)
+            {
+                bool isChecked = app.Contains("BingSports") ||
+                                 app.Contains("BingFinance") || 
+                                 app.Contains("BingWeather") || 
+                                 app.Contains("ZuneVideo") || 
+                                 app.Contains("ZuneMusic") || 
+                                 app.Contains("MicrosoftSolitaireCollection") || 
+                                 app.Contains("3DBuilder") || 
+                                 app.Contains("SkypeApp")
+                                 ;
+                checkedListBoxApps.Items.Add(app, isChecked);
+            }
+
+            // Pour les services
+            checkedListBoxServices.Items.Clear();
+            foreach (var service in uselessServices)
+            {
+                bool isChecked = service switch
+                {
+                    "DiagTrack" => true,
+                    "dmwappushservice" => true,
+                    "RetailDemo" => true,
+                    _ => false
+                };
+                checkedListBoxServices.Items.Add(service, isChecked);
+            }
+        }
+
+
+
+        private void BtnUninstallSelectedApps_Click(object sender, EventArgs e)
+        {
+            if (checkedListBoxApps.CheckedItems.Count == 0)
+            {
+                MessageBox.Show("Aucune application sélectionnée !");
+                return;
+            }
+
+            string psCommand = "";
+
+            foreach (var item in checkedListBoxApps.CheckedItems)
+            {
+                string appName = item.ToString();
+                psCommand += $@"
+$package = Get-AppxPackage -Name '{appName}' -ErrorAction SilentlyContinue
+if ($package) {{
+    Remove-AppxPackage $package -ErrorAction SilentlyContinue
+    Write-Output '{appName} -> Désinstallé'
+}} else {{
+    Write-Output '{appName} -> Non trouvé'
+}}
+";
+            }
+
+            LaunchPowerShellScript(psCommand);
+        }
+
+        private void BtnDisableSelectedServices_Click(object sender, EventArgs e)
+        {
+            if (checkedListBoxServices.CheckedItems.Count == 0)
+            {
+                MessageBox.Show("Aucun service sélectionné !");
+                return;
+            }
+
+            string psCommand = "";
+
+            foreach (var item in checkedListBoxServices.CheckedItems)
+            {
+                string serviceName = item.ToString();
+                psCommand += $@"
+$service = Get-Service -Name '{serviceName}' -ErrorAction SilentlyContinue
+if ($service) {{
+    try {{
+        Stop-Service -Name '{serviceName}' -Force -ErrorAction SilentlyContinue
+        Set-Service -Name '{serviceName}' -StartupType Disabled
+        Write-Output '{serviceName} -> Désactivé'
+    }} catch {{
+        Write-Output '{serviceName} -> Erreur lors de la désactivation'
+    }}
+}} else {{
+    Write-Output '{serviceName} -> Non trouvé'
+}}
+";
+            }
+
+            LaunchPowerShellScript(psCommand);
+        }
+        
+        private void LaunchPowerShellScript(string scriptContent)
+        {
+            try
+            {
+                string tempScriptPath = Path.Combine(Path.GetTempPath(), $"SaviorScript_{Guid.NewGuid()}.ps1");
+                File.WriteAllText(tempScriptPath, scriptContent);
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoExit -ExecutionPolicy Bypass -File \"{tempScriptPath}\"",
+                    UseShellExecute = true,
+                    Verb = "runas" // Admin obligatoire
+                };
+
+                Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lors de l'exécution du script PowerShell : {ex.Message}");
+            }
         }
 
 
@@ -134,19 +369,6 @@ namespace Savior.UI
             _processScanner = new ProcessScannerService();
         }
 
-        private void LoadSystemInfo()
-        {
-            if (IsInDesignMode())
-                return;
-
-            var cpu = _systemInfo.GetCpuInfo();
-            labelCPUName.Text = "Processeur : " + cpu.Name;
-            labelCPUCores.Text = $"Cœurs logiques : {cpu.LogicalCores} | Cœurs physiques : {cpu.PhysicalCores}";
-
-            labelRAM.Text = "RAM installée : " + _systemInfo.GetRamInfo() + " Go";
-            labelDisk.Text = "Disques :\r\n" + _systemInfo.GetDiskInfo();
-            labelGPU.Text = "Carte graphique : " + _systemInfo.GetGpuInfo();
-        }
 
         private void RefreshTemperatures()
         {
@@ -242,6 +464,13 @@ namespace Savior.UI
                                       $"Clé produit : *****-*****-*****-*****-{_windowsProductKeyLast5}";
         }
 
+        private void AnimateDots()
+        {
+            dotsCount = (dotsCount + 1) % 4; // 0 -> 1 -> 2 -> 3 -> 0
+            string dots = new string('.', dotsCount);
+            labelWindowsActivation.Text = $"Windows : Chargement{dots}";
+        }
+
         private async Task CheckWindowsActivationStatusAsync()
         {
             try
@@ -268,13 +497,13 @@ namespace Savior.UI
                 switch (result)
                 {
                     case "1":
-                        activationStatus = "✅ Windows est activé.";
+                        activationStatus = "✅ Actif";
                         break;
                     case "0":
-                        activationStatus = "❌ Windows n’est pas activé.";
+                        activationStatus = "❌ Inactif";
                         break;
                     default:
-                        activationStatus = "❓ Statut inconnu.";
+                        activationStatus = "❓ Inconnu";
                         break;
                 }
 
@@ -283,7 +512,7 @@ namespace Savior.UI
                 {
                     FileName = "powershell",
                     Arguments =
-                        "-Command \"Get-CimInstance -Class SoftwareLicensingProduct | Where-Object { $_.PartialProductKey } | Select-Object -First 1 LicenseFamily,PartialProductKey\"",
+                        "-Command \"(Get-CimInstance SoftwareLicensingProduct | ? PartialProductKey).LicenseStatus\"",
                     RedirectStandardOutput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
@@ -330,25 +559,25 @@ namespace Savior.UI
         {
             try
             {
-                // Chemin relatif vers le script MAS_AIO.cmd
                 string masPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "MAS_AIO.cmd");
+                string masDir = Path.GetDirectoryName(masPath)!; // Dossier du script
+                Console.WriteLine("Chemin du script MAS : " + masPath);
 
-                // Vérifier si le fichier existe
+
                 if (!File.Exists(masPath))
                 {
                     MessageBox.Show("Le fichier MAS_AIO.cmd est introuvable. Chemin : " + masPath);
                     return;
                 }
 
-                // Configurer le processus pour exécuter le script
                 ProcessStartInfo psi = new ProcessStartInfo
                 {
-                    FileName = masPath,
+                    FileName = masPath, // 🆕 Chemin complet du script
+                    WorkingDirectory = masDir, // 🆕 Dossier du script
                     UseShellExecute = true,
-                    Verb = "runas" // Exécuter en tant qu'administrateur
+                    Verb = "runas" // Exécution en tant qu'admin
                 };
 
-                // Exécuter le processus
                 Process.Start(psi);
             }
             catch (Exception ex)
@@ -356,6 +585,7 @@ namespace Savior.UI
                 MessageBox.Show("Erreur : " + ex.Message);
             }
         }
+
 
         private void BtnKillProcess_Click(object sender, EventArgs e)
         {
@@ -370,6 +600,33 @@ namespace Savior.UI
                 }
             }
         }
+
+        private void ButtonWinUpdate_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                string arguments =
+                    "-NoExit -Command \"Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force; " +
+                    "Install-Module PSWindowsUpdate -Force -Confirm:$false; " +
+                    "Import-Module PSWindowsUpdate; " +
+                    "Get-WindowsUpdate -Install -AcceptAll -IgnoreReboot\"";
+
+                ProcessStartInfo psi = new ProcessStartInfo
+                {
+                    FileName = "powershell",
+                    Arguments = arguments,
+                    UseShellExecute = true,
+                    Verb = "runas" // ✅ Ouvre avec élévation (admin)
+                };
+
+                Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur PowerShell: {ex.Message}");
+            }
+        }
+
 
         private void BtnOpenPowerShell_Click(object sender, EventArgs e)
         {
@@ -438,6 +695,12 @@ namespace Savior.UI
         {
             AllTabs = new System.Windows.Forms.TabControl();
             TabGeneral = new System.Windows.Forms.TabPage();
+            groupBox5 = new System.Windows.Forms.GroupBox();
+            labelDisk = new System.Windows.Forms.Label();
+            labelCPUCores = new System.Windows.Forms.Label();
+            labelRAM = new System.Windows.Forms.Label();
+            labelGPURef2 = new System.Windows.Forms.Label();
+            labelCPURef2 = new System.Windows.Forms.Label();
             TabSoftwares = new System.Windows.Forms.TabPage();
             groupBox4 = new System.Windows.Forms.GroupBox();
             checkBoxSteam = new System.Windows.Forms.CheckBox();
@@ -454,14 +717,33 @@ namespace Savior.UI
             checkBoxLibreOffice = new System.Windows.Forms.CheckBox();
             checkBoxChrome = new System.Windows.Forms.CheckBox();
             InstallSelection = new System.Windows.Forms.Button();
+            tabWinUpdate = new System.Windows.Forms.TabPage();
+            buttonWinUpdate = new System.Windows.Forms.Button();
+            tabOptimisation = new System.Windows.Forms.TabPage();
+            groupBox7 = new System.Windows.Forms.GroupBox();
+            checkedListBoxServices = new System.Windows.Forms.CheckedListBox();
+            buttonOptimisation = new System.Windows.Forms.Button();
+            groupBox6 = new System.Windows.Forms.GroupBox();
+            checkedListBoxApps = new System.Windows.Forms.CheckedListBox();
+            buttonBloatWare = new System.Windows.Forms.Button();
             labelCpuTemp = new System.Windows.Forms.Label();
             labelGpuTemp = new System.Windows.Forms.Label();
+            labelWindowsActivation = new System.Windows.Forms.Label();
+            labelCPURef = new System.Windows.Forms.Label();
+            labelGPURef = new System.Windows.Forms.Label();
+            buttonActivation = new System.Windows.Forms.Button();
             AllTabs.SuspendLayout();
+            TabGeneral.SuspendLayout();
+            groupBox5.SuspendLayout();
             TabSoftwares.SuspendLayout();
             groupBox4.SuspendLayout();
             groupBox3.SuspendLayout();
             groupBox2.SuspendLayout();
             groupBox1.SuspendLayout();
+            tabWinUpdate.SuspendLayout();
+            tabOptimisation.SuspendLayout();
+            groupBox7.SuspendLayout();
+            groupBox6.SuspendLayout();
             SuspendLayout();
             // 
             // AllTabs
@@ -469,21 +751,81 @@ namespace Savior.UI
             AllTabs.AccessibleName = "AllTabs";
             AllTabs.Controls.Add(TabGeneral);
             AllTabs.Controls.Add(TabSoftwares);
-            AllTabs.Location = new System.Drawing.Point(12, 12);
+            AllTabs.Controls.Add(tabWinUpdate);
+            AllTabs.Controls.Add(tabOptimisation);
+            AllTabs.Dock = System.Windows.Forms.DockStyle.Top;
+            AllTabs.Location = new System.Drawing.Point(0, 0);
             AllTabs.Name = "AllTabs";
             AllTabs.SelectedIndex = 0;
-            AllTabs.Size = new System.Drawing.Size(873, 596);
+            AllTabs.Size = new System.Drawing.Size(897, 608);
             AllTabs.TabIndex = 0;
             // 
             // TabGeneral
             // 
+            TabGeneral.Controls.Add(groupBox5);
             TabGeneral.Location = new System.Drawing.Point(4, 24);
             TabGeneral.Name = "TabGeneral";
             TabGeneral.Padding = new System.Windows.Forms.Padding(3);
-            TabGeneral.Size = new System.Drawing.Size(865, 568);
+            TabGeneral.Size = new System.Drawing.Size(889, 580);
             TabGeneral.TabIndex = 0;
             TabGeneral.Text = "General";
             TabGeneral.UseVisualStyleBackColor = true;
+            // 
+            // groupBox5
+            // 
+            groupBox5.Controls.Add(labelDisk);
+            groupBox5.Controls.Add(labelCPUCores);
+            groupBox5.Controls.Add(labelRAM);
+            groupBox5.Controls.Add(labelGPURef2);
+            groupBox5.Controls.Add(labelCPURef2);
+            groupBox5.Location = new System.Drawing.Point(19, 17);
+            groupBox5.Name = "groupBox5";
+            groupBox5.Size = new System.Drawing.Size(483, 251);
+            groupBox5.TabIndex = 0;
+            groupBox5.TabStop = false;
+            groupBox5.Text = "Informations système";
+            // 
+            // labelDisk
+            // 
+            labelDisk.Location = new System.Drawing.Point(6, 120);
+            labelDisk.Name = "labelDisk";
+            labelDisk.Size = new System.Drawing.Size(439, 128);
+            labelDisk.TabIndex = 8;
+            labelDisk.Text = "DISK NOT FOUND";
+            // 
+            // labelCPUCores
+            // 
+            labelCPUCores.Location = new System.Drawing.Point(6, 35);
+            labelCPUCores.Name = "labelCPUCores";
+            labelCPUCores.Size = new System.Drawing.Size(439, 16);
+            labelCPUCores.TabIndex = 7;
+            labelCPUCores.Text = "CORES NOT FOUND";
+            labelCPUCores.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // labelRAM
+            // 
+            labelRAM.Location = new System.Drawing.Point(6, 91);
+            labelRAM.Name = "labelRAM";
+            labelRAM.Size = new System.Drawing.Size(439, 16);
+            labelRAM.TabIndex = 6;
+            labelRAM.Text = "RAM NOT FOUND";
+            // 
+            // labelGPURef2
+            // 
+            labelGPURef2.Location = new System.Drawing.Point(6, 63);
+            labelGPURef2.Name = "labelGPURef2";
+            labelGPURef2.Size = new System.Drawing.Size(439, 16);
+            labelGPURef2.TabIndex = 5;
+            labelGPURef2.Text = "GPU NOT FOUND";
+            labelGPURef2.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // labelCPURef2
+            // 
+            labelCPURef2.Location = new System.Drawing.Point(6, 19);
+            labelCPURef2.Name = "labelCPURef2";
+            labelCPURef2.Size = new System.Drawing.Size(439, 16);
+            labelCPURef2.TabIndex = 4;
+            labelCPURef2.Text = "CPU NOT FOUND";
             // 
             // TabSoftwares
             // 
@@ -495,7 +837,7 @@ namespace Savior.UI
             TabSoftwares.Location = new System.Drawing.Point(4, 24);
             TabSoftwares.Name = "TabSoftwares";
             TabSoftwares.Padding = new System.Windows.Forms.Padding(3);
-            TabSoftwares.Size = new System.Drawing.Size(865, 568);
+            TabSoftwares.Size = new System.Drawing.Size(889, 580);
             TabSoftwares.TabIndex = 1;
             TabSoftwares.Text = "Softwares";
             TabSoftwares.UseVisualStyleBackColor = true;
@@ -650,11 +992,102 @@ namespace Savior.UI
             // 
             InstallSelection.Location = new System.Drawing.Point(22, 19);
             InstallSelection.Name = "InstallSelection";
-            InstallSelection.Size = new System.Drawing.Size(126, 31);
+            InstallSelection.Size = new System.Drawing.Size(202, 31);
             InstallSelection.TabIndex = 0;
             InstallSelection.Text = "Installer la selection";
             InstallSelection.UseVisualStyleBackColor = true;
             InstallSelection.Click += BtnOpenPowerShell_Click;
+            // 
+            // tabWinUpdate
+            // 
+            tabWinUpdate.Controls.Add(buttonWinUpdate);
+            tabWinUpdate.Location = new System.Drawing.Point(4, 24);
+            tabWinUpdate.Name = "tabWinUpdate";
+            tabWinUpdate.Padding = new System.Windows.Forms.Padding(3);
+            tabWinUpdate.Size = new System.Drawing.Size(889, 580);
+            tabWinUpdate.TabIndex = 2;
+            tabWinUpdate.Text = "Windows";
+            tabWinUpdate.UseVisualStyleBackColor = true;
+            // 
+            // buttonWinUpdate
+            // 
+            buttonWinUpdate.Location = new System.Drawing.Point(12, 21);
+            buttonWinUpdate.Name = "buttonWinUpdate";
+            buttonWinUpdate.Size = new System.Drawing.Size(144, 31);
+            buttonWinUpdate.TabIndex = 0;
+            buttonWinUpdate.Text = "Windows Update";
+            buttonWinUpdate.UseVisualStyleBackColor = true;
+            buttonWinUpdate.Click += ButtonWinUpdate_Click;
+            // 
+            // tabOptimisation
+            // 
+            tabOptimisation.Controls.Add(groupBox7);
+            tabOptimisation.Controls.Add(groupBox6);
+            tabOptimisation.Location = new System.Drawing.Point(4, 24);
+            tabOptimisation.Name = "tabOptimisation";
+            tabOptimisation.Padding = new System.Windows.Forms.Padding(3);
+            tabOptimisation.Size = new System.Drawing.Size(889, 580);
+            tabOptimisation.TabIndex = 3;
+            tabOptimisation.Text = "Optimisation";
+            tabOptimisation.UseVisualStyleBackColor = true;
+            // 
+            // groupBox7
+            // 
+            groupBox7.Controls.Add(checkedListBoxServices);
+            groupBox7.Controls.Add(buttonOptimisation);
+            groupBox7.Location = new System.Drawing.Point(485, 15);
+            groupBox7.Name = "groupBox7";
+            groupBox7.Size = new System.Drawing.Size(396, 549);
+            groupBox7.TabIndex = 3;
+            groupBox7.TabStop = false;
+            groupBox7.Text = "Services";
+            // 
+            // checkedListBoxServices
+            // 
+            checkedListBoxServices.FormattingEnabled = true;
+            checkedListBoxServices.Location = new System.Drawing.Point(6, 56);
+            checkedListBoxServices.Name = "checkedListBoxServices";
+            checkedListBoxServices.Size = new System.Drawing.Size(384, 472);
+            checkedListBoxServices.TabIndex = 2;
+            // 
+            // buttonOptimisation
+            // 
+            buttonOptimisation.Location = new System.Drawing.Point(121, 22);
+            buttonOptimisation.Name = "buttonOptimisation";
+            buttonOptimisation.Size = new System.Drawing.Size(166, 28);
+            buttonOptimisation.TabIndex = 1;
+            buttonOptimisation.Text = "Optimisation des services";
+            buttonOptimisation.UseVisualStyleBackColor = true;
+            buttonOptimisation.Click += BtnDisableSelectedServices_Click;
+            // 
+            // groupBox6
+            // 
+            groupBox6.Controls.Add(checkedListBoxApps);
+            groupBox6.Controls.Add(buttonBloatWare);
+            groupBox6.Location = new System.Drawing.Point(12, 15);
+            groupBox6.Name = "groupBox6";
+            groupBox6.Size = new System.Drawing.Size(396, 549);
+            groupBox6.TabIndex = 2;
+            groupBox6.TabStop = false;
+            groupBox6.Text = "Bloatwares";
+            // 
+            // checkedListBoxApps
+            // 
+            checkedListBoxApps.FormattingEnabled = true;
+            checkedListBoxApps.Location = new System.Drawing.Point(6, 56);
+            checkedListBoxApps.Name = "checkedListBoxApps";
+            checkedListBoxApps.Size = new System.Drawing.Size(384, 472);
+            checkedListBoxApps.TabIndex = 1;
+            // 
+            // buttonBloatWare
+            // 
+            buttonBloatWare.Location = new System.Drawing.Point(114, 22);
+            buttonBloatWare.Name = "buttonBloatWare";
+            buttonBloatWare.Size = new System.Drawing.Size(166, 28);
+            buttonBloatWare.TabIndex = 0;
+            buttonBloatWare.Text = "Remove Bloatwares";
+            buttonBloatWare.UseVisualStyleBackColor = true;
+            buttonBloatWare.Click += BtnUninstallSelectedApps_Click;
             // 
             // labelCpuTemp
             // 
@@ -674,22 +1107,74 @@ namespace Savior.UI
             labelGpuTemp.TabIndex = 2;
             labelGpuTemp.Text = "GPU : -- °C";
             // 
+            // labelWindowsActivation
+            // 
+            labelWindowsActivation.Location = new System.Drawing.Point(567, 620);
+            labelWindowsActivation.Name = "labelWindowsActivation";
+            labelWindowsActivation.Size = new System.Drawing.Size(176, 23);
+            labelWindowsActivation.TabIndex = 0;
+            labelWindowsActivation.Text = "Windows :";
+            // 
+            // labelCPURef
+            // 
+            labelCPURef.Location = new System.Drawing.Point(122, 611);
+            labelCPURef.Name = "labelCPURef";
+            labelCPURef.Size = new System.Drawing.Size(439, 16);
+            labelCPURef.TabIndex = 3;
+            labelCPURef.Text = "CPU NOT FOUND";
+            // 
+            // labelGPURef
+            // 
+            labelGPURef.Location = new System.Drawing.Point(122, 627);
+            labelGPURef.Name = "labelGPURef";
+            labelGPURef.Size = new System.Drawing.Size(439, 16);
+            labelGPURef.TabIndex = 4;
+            labelGPURef.Text = "GPU NOT FOUND";
+            // 
+            // buttonActivation
+            // 
+            buttonActivation.Location = new System.Drawing.Point(775, 616);
+            buttonActivation.Name = "buttonActivation";
+            buttonActivation.Size = new System.Drawing.Size(75, 23);
+            buttonActivation.TabIndex = 5;
+            buttonActivation.Text = "Activer";
+            buttonActivation.UseVisualStyleBackColor = true;
+            buttonActivation.Click += BtnActivateWindows_Click;
+            // 
             // MainForm
             // 
             ClientSize = new System.Drawing.Size(897, 649);
+            Controls.Add(buttonActivation);
+            Controls.Add(labelGPURef);
+            Controls.Add(labelCPURef);
+            Controls.Add(labelWindowsActivation);
             Controls.Add(labelGpuTemp);
             Controls.Add(labelCpuTemp);
             Controls.Add(AllTabs);
             AllTabs.ResumeLayout(false);
+            TabGeneral.ResumeLayout(false);
+            groupBox5.ResumeLayout(false);
             TabSoftwares.ResumeLayout(false);
             groupBox4.ResumeLayout(false);
             groupBox3.ResumeLayout(false);
             groupBox2.ResumeLayout(false);
             groupBox1.ResumeLayout(false);
+            tabWinUpdate.ResumeLayout(false);
+            tabOptimisation.ResumeLayout(false);
+            groupBox7.ResumeLayout(false);
+            groupBox6.ResumeLayout(false);
             ResumeLayout(false);
         }
 
-        private System.Windows.Forms.Label label1;
+
+        private System.Windows.Forms.GroupBox groupBox6;
+        private System.Windows.Forms.GroupBox groupBox7;
+
+        private System.Windows.Forms.TabPage tabOptimisation;
+
+        private System.Windows.Forms.TabPage tabWinUpdate;
+
+        private System.Windows.Forms.GroupBox groupBox5;
 
         private System.Windows.Forms.GroupBox groupBox3;
         private System.Windows.Forms.GroupBox groupBox4;
