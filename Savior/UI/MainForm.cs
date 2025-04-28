@@ -59,6 +59,16 @@ namespace Savior.UI
             "WMPNetworkSvc" // Windows Media Player Network Sharing Service
         };
 
+        private System.Windows.Forms.TabPage tabStress;
+        private System.Windows.Forms.Button buttonStressCPU;
+        private System.Windows.Forms.Button buttonStressGPU;
+        private System.Windows.Forms.Button buttonStressBOTH;
+
+        private Process? furmarkProcess = null;
+        private CancellationTokenSource? stressCancellationTokenSource = null;
+        private bool isCpuStressRunning = false;
+        private bool isGpuStressRunning = false;
+
 
         private string _windowsActivationStatus;
         private string _windowsVersion;
@@ -236,14 +246,14 @@ namespace Savior.UI
             foreach (var app in bloatwareApps)
             {
                 bool isChecked = app.Contains("BingSports") ||
-                                 app.Contains("BingFinance") || 
-                                 app.Contains("BingWeather") || 
-                                 app.Contains("ZuneVideo") || 
-                                 app.Contains("ZuneMusic") || 
-                                 app.Contains("MicrosoftSolitaireCollection") || 
-                                 app.Contains("3DBuilder") || 
+                                 app.Contains("BingFinance") ||
+                                 app.Contains("BingWeather") ||
+                                 app.Contains("ZuneVideo") ||
+                                 app.Contains("ZuneMusic") ||
+                                 app.Contains("MicrosoftSolitaireCollection") ||
+                                 app.Contains("3DBuilder") ||
                                  app.Contains("SkypeApp")
-                                 ;
+                    ;
                 checkedListBoxApps.Items.Add(app, isChecked);
             }
 
@@ -261,7 +271,6 @@ namespace Savior.UI
                 checkedListBoxServices.Items.Add(service, isChecked);
             }
         }
-
 
 
         private void BtnUninstallSelectedApps_Click(object sender, EventArgs e)
@@ -322,7 +331,7 @@ if ($service) {{
 
             LaunchPowerShellScript(psCommand);
         }
-        
+
         private void LaunchPowerShellScript(string scriptContent)
         {
             try
@@ -346,17 +355,6 @@ if ($service) {{
             }
         }
 
-
-        private void ShowPanel(Panel panel)
-        {
-            panelGeneral.Visible = false;
-            panelBSOD.Visible = false;
-            panelVirus.Visible = false;
-            panelInstallation.Visible = false;
-            panelWindows.Visible = false;
-
-            panel.Visible = true;
-        }
 
         private void InitializeServices()
         {
@@ -400,69 +398,96 @@ if ($service) {{
                 Console.WriteLine("⚠️ Température CPU non trouvée");
         }
 
-
-        private void BtnGeneral_Click(object sender, EventArgs e)
+// === CPU STRESS ===
+        private async void StartCpuStress()
         {
-            ShowPanel(panelGeneral);
-        }
+            if (isCpuStressRunning)
+                return;
 
-        private void BtnBSOD_Click(object sender, EventArgs e)
-        {
-            ShowPanel(panelBSOD);
+            isCpuStressRunning = true;
+            stressCancellationTokenSource = new CancellationTokenSource();
 
-            listViewBSOD.Items.Clear();
-            var events = _bsodService.GetRecentBsodEvents();
-
-            foreach (var ev in events)
+            await Task.Run(() =>
             {
-                SafeAddItem(listViewBSOD, new ListViewItem(new[]
+                try
                 {
-                    ev.Date,
-                    ev.Source,
-                    ev.EventId,
-                    ev.ShortMessage
-                }));
-            }
+                    while (!stressCancellationTokenSource.Token.IsCancellationRequested)
+                    {
+                        // Charge CPU simple
+                        double x = Math.Pow(12345.6789, 9876.5432);
 
-            if (events.Count == 0)
+                        // Vérifie température CPU
+                        float cpuTemp = _hardwareMonitor.GetCpuRealTemperature();
+                        if (cpuTemp > 85)
+                        {
+                            Invoke(() =>
+                                MessageBox.Show($"⚠️ Température CPU trop haute ({cpuTemp} °C) ! Test arrêté."));
+                            StopCpuStress();
+                            break;
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Normal : annulé
+                }
+            }, stressCancellationTokenSource.Token);
+        }
+
+        private void StopCpuStress()
+        {
+            isCpuStressRunning = false;
+            stressCancellationTokenSource?.Cancel();
+        }
+
+// === GPU STRESS ===
+        private void StartGpuStress()
+        {
+            try
             {
-                var item = new ListViewItem(new[] { "", "", "", "Aucun événement BSOD trouvé" });
-                SafeAddItem(listViewBSOD, item);
+                string furmarkPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                    @"Data\FurMark_win64\FurMark_GUI.exe");
+
+                if (!File.Exists(furmarkPath))
+                {
+                    MessageBox.Show("FurMark non trouvé : " + furmarkPath);
+                    return;
+                }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = furmarkPath,
+                    UseShellExecute = true,
+                    Verb = "runas"
+                };
+
+                furmarkProcess = Process.Start(psi);
             }
-        }
-
-        private void BtnVirus_Click(object sender, EventArgs e)
-        {
-            ShowPanel(panelVirus);
-
-            listViewVirus.Items.Clear();
-            var processes = _processScanner.ScanProcesses();
-
-            foreach (var proc in processes)
+            catch (Exception ex)
             {
-                var item = new ListViewItem(proc.Name);
-                item.SubItems.Add(proc.Pid.ToString());
-                item.SubItems.Add(proc.MemoryMB.ToString());
-                item.SubItems.Add(proc.IsSigned ? "Oui" : "Non");
-                item.SubItems.Add(proc.Path);
-                item.Tag = proc;
-                SafeAddItem(listViewVirus, item);
+                MessageBox.Show($"Erreur lancement FurMark : {ex.Message}");
             }
         }
 
-        private void BtnInstallation_Click(object sender, EventArgs e)
+        private void BtnStressCpu_Click(object sender, EventArgs e)
         {
-            ShowPanel(panelInstallation);
+            if (!isCpuStressRunning)
+                StartCpuStress();
+            else
+                StopCpuStress();
         }
 
-        private void BtnWindows_Click(object sender, EventArgs e)
+        private void BtnStressGpu_Click(object sender, EventArgs e)
         {
-            ShowPanel(panelWindows);
-            labelWindowsStatus.Text = $"{_windowsActivationStatus}\n" +
-                                      $"Version : {_windowsVersion}\n" +
-                                      $"Type de licence : {_windowsLicenseType}\n" +
-                                      $"Clé produit : *****-*****-*****-*****-{_windowsProductKeyLast5}";
+            StartGpuStress();
         }
+
+        private void BtnStressBoth_Click(object sender, EventArgs e)
+        {
+            StartCpuStress();
+            StartGpuStress();
+        }
+
 
         private void AnimateDots()
         {
@@ -586,20 +611,6 @@ if ($service) {{
             }
         }
 
-
-        private void BtnKillProcess_Click(object sender, EventArgs e)
-        {
-            if (listViewVirus.SelectedItems.Count > 0)
-            {
-                var selected = listViewVirus.SelectedItems[0];
-                if (selected.Tag is ProcessInfo proc)
-                {
-                    _processScanner.KillProcess(proc.Pid);
-                    MessageBox.Show($"Processus {proc.Name} (PID: {proc.Pid}) terminé.");
-                    BtnVirus_Click(null, null);
-                }
-            }
-        }
 
         private void ButtonWinUpdate_Click(object sender, EventArgs e)
         {
@@ -726,12 +737,18 @@ if ($service) {{
             groupBox6 = new System.Windows.Forms.GroupBox();
             checkedListBoxApps = new System.Windows.Forms.CheckedListBox();
             buttonBloatWare = new System.Windows.Forms.Button();
+            tabStress = new System.Windows.Forms.TabPage();
+            buttonStressBOTH = new System.Windows.Forms.Button();
+            buttonStressGPU = new System.Windows.Forms.Button();
+            buttonStressCPU = new System.Windows.Forms.Button();
             labelCpuTemp = new System.Windows.Forms.Label();
             labelGpuTemp = new System.Windows.Forms.Label();
             labelWindowsActivation = new System.Windows.Forms.Label();
             labelCPURef = new System.Windows.Forms.Label();
             labelGPURef = new System.Windows.Forms.Label();
             buttonActivation = new System.Windows.Forms.Button();
+            groupBox8 = new System.Windows.Forms.GroupBox();
+            groupBox9 = new System.Windows.Forms.GroupBox();
             AllTabs.SuspendLayout();
             TabGeneral.SuspendLayout();
             groupBox5.SuspendLayout();
@@ -744,6 +761,9 @@ if ($service) {{
             tabOptimisation.SuspendLayout();
             groupBox7.SuspendLayout();
             groupBox6.SuspendLayout();
+            tabStress.SuspendLayout();
+            groupBox8.SuspendLayout();
+            groupBox9.SuspendLayout();
             SuspendLayout();
             // 
             // AllTabs
@@ -753,6 +773,7 @@ if ($service) {{
             AllTabs.Controls.Add(TabSoftwares);
             AllTabs.Controls.Add(tabWinUpdate);
             AllTabs.Controls.Add(tabOptimisation);
+            AllTabs.Controls.Add(tabStress);
             AllTabs.Dock = System.Windows.Forms.DockStyle.Top;
             AllTabs.Location = new System.Drawing.Point(0, 0);
             AllTabs.Name = "AllTabs";
@@ -1089,6 +1110,50 @@ if ($service) {{
             buttonBloatWare.UseVisualStyleBackColor = true;
             buttonBloatWare.Click += BtnUninstallSelectedApps_Click;
             // 
+            // tabStress
+            // 
+            tabStress.Controls.Add(groupBox9);
+            tabStress.Controls.Add(groupBox8);
+            tabStress.Controls.Add(buttonStressBOTH);
+            tabStress.Location = new System.Drawing.Point(4, 24);
+            tabStress.Name = "tabStress";
+            tabStress.Padding = new System.Windows.Forms.Padding(3);
+            tabStress.Size = new System.Drawing.Size(889, 580);
+            tabStress.TabIndex = 4;
+            tabStress.Text = "Stress";
+            tabStress.UseVisualStyleBackColor = true;
+            // 
+            // buttonStressBOTH
+            // 
+            buttonStressBOTH.Enabled = false;
+            buttonStressBOTH.Location = new System.Drawing.Point(131, 122);
+            buttonStressBOTH.Name = "buttonStressBOTH";
+            buttonStressBOTH.Size = new System.Drawing.Size(180, 23);
+            buttonStressBOTH.TabIndex = 2;
+            buttonStressBOTH.Text = "buttonStressBOTH";
+            buttonStressBOTH.UseVisualStyleBackColor = true;
+            buttonStressBOTH.Click += BtnStressBoth_Click;
+            // 
+            // buttonStressGPU
+            // 
+            buttonStressGPU.Location = new System.Drawing.Point(6, 22);
+            buttonStressGPU.Name = "buttonStressGPU";
+            buttonStressGPU.Size = new System.Drawing.Size(141, 23);
+            buttonStressGPU.TabIndex = 1;
+            buttonStressGPU.Text = "Furmark 2";
+            buttonStressGPU.UseVisualStyleBackColor = true;
+            buttonStressGPU.Click += BtnStressGpu_Click;
+            // 
+            // buttonStressCPU
+            // 
+            buttonStressCPU.Location = new System.Drawing.Point(6, 22);
+            buttonStressCPU.Name = "buttonStressCPU";
+            buttonStressCPU.Size = new System.Drawing.Size(141, 23);
+            buttonStressCPU.TabIndex = 0;
+            buttonStressCPU.Text = "buttonStressCPU";
+            buttonStressCPU.UseVisualStyleBackColor = true;
+            buttonStressCPU.Click += BtnStressCpu_Click;
+            // 
             // labelCpuTemp
             // 
             labelCpuTemp.AccessibleName = "labelCpuTemp";
@@ -1141,6 +1206,26 @@ if ($service) {{
             buttonActivation.UseVisualStyleBackColor = true;
             buttonActivation.Click += BtnActivateWindows_Click;
             // 
+            // groupBox8
+            // 
+            groupBox8.Controls.Add(buttonStressCPU);
+            groupBox8.Location = new System.Drawing.Point(12, 16);
+            groupBox8.Name = "groupBox8";
+            groupBox8.Size = new System.Drawing.Size(200, 100);
+            groupBox8.TabIndex = 3;
+            groupBox8.TabStop = false;
+            groupBox8.Text = "CPU Stess";
+            // 
+            // groupBox9
+            // 
+            groupBox9.Controls.Add(buttonStressGPU);
+            groupBox9.Location = new System.Drawing.Point(218, 16);
+            groupBox9.Name = "groupBox9";
+            groupBox9.Size = new System.Drawing.Size(200, 100);
+            groupBox9.TabIndex = 4;
+            groupBox9.TabStop = false;
+            groupBox9.Text = "GPU Stress";
+            // 
             // MainForm
             // 
             ClientSize = new System.Drawing.Size(897, 649);
@@ -1163,8 +1248,14 @@ if ($service) {{
             tabOptimisation.ResumeLayout(false);
             groupBox7.ResumeLayout(false);
             groupBox6.ResumeLayout(false);
+            tabStress.ResumeLayout(false);
+            groupBox8.ResumeLayout(false);
+            groupBox9.ResumeLayout(false);
             ResumeLayout(false);
         }
+
+        private System.Windows.Forms.GroupBox groupBox8;
+        private System.Windows.Forms.GroupBox groupBox9;
 
 
         private System.Windows.Forms.GroupBox groupBox6;
