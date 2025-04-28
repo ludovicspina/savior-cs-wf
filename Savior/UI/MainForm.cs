@@ -238,6 +238,71 @@ namespace Savior.UI
             });
         }
 
+        private async void BtnMultimediaSetup_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                // 1️⃣ Activer Windows via MAS_AIO
+                string masPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "MAS_AIO.cmd");
+                if (File.Exists(masPath))
+                {
+                    ProcessStartInfo masProcess = new ProcessStartInfo
+                    {
+                        FileName = masPath,
+                        WorkingDirectory = Path.GetDirectoryName(masPath),
+                        UseShellExecute = true,
+                        Verb = "runas"
+                    };
+                    Process.Start(masProcess);
+                    await Task.Delay(1000); // Petit délai pour laisser MAS démarrer
+                }
+                else
+                {
+                    MessageBox.Show("MAS_AIO.cmd non trouvé.");
+                }
+
+                // 2️⃣ Lancer Windows Update
+                string windowsUpdateCommand =
+                    "-NoExit -Command \"Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force; " +
+                    "Install-Module PSWindowsUpdate -Force -Confirm:$false; " +
+                    "Import-Module PSWindowsUpdate; " +
+                    "Get-WindowsUpdate -Install -AcceptAll -IgnoreReboot\"";
+
+                ProcessStartInfo updateProcess = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = windowsUpdateCommand,
+                    UseShellExecute = true,
+                    Verb = "runas"
+                };
+                Process.Start(updateProcess);
+
+                await Task.Delay(1000); // Laisse Windows Update se préparer un peu
+
+                // 3️⃣ Installer VLC, LibreOffice, Adobe Reader, Chrome
+                string appsInstallCommand =
+                    "-NoExit -Command \"" +
+                    "winget install --id VideoLAN.VLC -e --silent --accept-package-agreements --accept-source-agreements; " +
+                    "winget install --id TheDocumentFoundation.LibreOffice -e --silent --accept-package-agreements --accept-source-agreements; " +
+                    "winget install --id Adobe.Acrobat.Reader.64-bit -e --silent --accept-package-agreements --accept-source-agreements; " +
+                    "winget install --id Google.Chrome -e --silent --accept-package-agreements --accept-source-agreements; " +
+                    "\"";
+
+                ProcessStartInfo installProcess = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = appsInstallCommand,
+                    UseShellExecute = true,
+                    Verb = "runas"
+                };
+                Process.Start(installProcess);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur dans le setup multimédia : {ex.Message}");
+            }
+        }
+
 
         private void LoadOptimizationLists()
         {
@@ -738,17 +803,19 @@ if ($service) {{
             checkedListBoxApps = new System.Windows.Forms.CheckedListBox();
             buttonBloatWare = new System.Windows.Forms.Button();
             tabStress = new System.Windows.Forms.TabPage();
-            buttonStressBOTH = new System.Windows.Forms.Button();
+            groupBox9 = new System.Windows.Forms.GroupBox();
             buttonStressGPU = new System.Windows.Forms.Button();
+            groupBox8 = new System.Windows.Forms.GroupBox();
             buttonStressCPU = new System.Windows.Forms.Button();
+            buttonStressBOTH = new System.Windows.Forms.Button();
+            tabPageAutoInstall = new System.Windows.Forms.TabPage();
+            buttonMultimediaSetup = new System.Windows.Forms.Button();
             labelCpuTemp = new System.Windows.Forms.Label();
             labelGpuTemp = new System.Windows.Forms.Label();
             labelWindowsActivation = new System.Windows.Forms.Label();
             labelCPURef = new System.Windows.Forms.Label();
             labelGPURef = new System.Windows.Forms.Label();
             buttonActivation = new System.Windows.Forms.Button();
-            groupBox8 = new System.Windows.Forms.GroupBox();
-            groupBox9 = new System.Windows.Forms.GroupBox();
             AllTabs.SuspendLayout();
             TabGeneral.SuspendLayout();
             groupBox5.SuspendLayout();
@@ -762,8 +829,9 @@ if ($service) {{
             groupBox7.SuspendLayout();
             groupBox6.SuspendLayout();
             tabStress.SuspendLayout();
-            groupBox8.SuspendLayout();
             groupBox9.SuspendLayout();
+            groupBox8.SuspendLayout();
+            tabPageAutoInstall.SuspendLayout();
             SuspendLayout();
             // 
             // AllTabs
@@ -774,6 +842,7 @@ if ($service) {{
             AllTabs.Controls.Add(tabWinUpdate);
             AllTabs.Controls.Add(tabOptimisation);
             AllTabs.Controls.Add(tabStress);
+            AllTabs.Controls.Add(tabPageAutoInstall);
             AllTabs.Dock = System.Windows.Forms.DockStyle.Top;
             AllTabs.Location = new System.Drawing.Point(0, 0);
             AllTabs.Name = "AllTabs";
@@ -1123,16 +1192,15 @@ if ($service) {{
             tabStress.Text = "Stress";
             tabStress.UseVisualStyleBackColor = true;
             // 
-            // buttonStressBOTH
+            // groupBox9
             // 
-            buttonStressBOTH.Enabled = false;
-            buttonStressBOTH.Location = new System.Drawing.Point(131, 122);
-            buttonStressBOTH.Name = "buttonStressBOTH";
-            buttonStressBOTH.Size = new System.Drawing.Size(180, 23);
-            buttonStressBOTH.TabIndex = 2;
-            buttonStressBOTH.Text = "buttonStressBOTH";
-            buttonStressBOTH.UseVisualStyleBackColor = true;
-            buttonStressBOTH.Click += BtnStressBoth_Click;
+            groupBox9.Controls.Add(buttonStressGPU);
+            groupBox9.Location = new System.Drawing.Point(218, 16);
+            groupBox9.Name = "groupBox9";
+            groupBox9.Size = new System.Drawing.Size(200, 100);
+            groupBox9.TabIndex = 4;
+            groupBox9.TabStop = false;
+            groupBox9.Text = "GPU Stress";
             // 
             // buttonStressGPU
             // 
@@ -1144,6 +1212,16 @@ if ($service) {{
             buttonStressGPU.UseVisualStyleBackColor = true;
             buttonStressGPU.Click += BtnStressGpu_Click;
             // 
+            // groupBox8
+            // 
+            groupBox8.Controls.Add(buttonStressCPU);
+            groupBox8.Location = new System.Drawing.Point(12, 16);
+            groupBox8.Name = "groupBox8";
+            groupBox8.Size = new System.Drawing.Size(200, 100);
+            groupBox8.TabIndex = 3;
+            groupBox8.TabStop = false;
+            groupBox8.Text = "CPU Stess";
+            // 
             // buttonStressCPU
             // 
             buttonStressCPU.Location = new System.Drawing.Point(6, 22);
@@ -1153,6 +1231,38 @@ if ($service) {{
             buttonStressCPU.Text = "buttonStressCPU";
             buttonStressCPU.UseVisualStyleBackColor = true;
             buttonStressCPU.Click += BtnStressCpu_Click;
+            // 
+            // buttonStressBOTH
+            // 
+            buttonStressBOTH.Enabled = false;
+            buttonStressBOTH.Location = new System.Drawing.Point(131, 122);
+            buttonStressBOTH.Name = "buttonStressBOTH";
+            buttonStressBOTH.Size = new System.Drawing.Size(180, 23);
+            buttonStressBOTH.TabIndex = 2;
+            buttonStressBOTH.Text = "buttonStressBOTH";
+            buttonStressBOTH.UseVisualStyleBackColor = true;
+            buttonStressBOTH.Click += BtnStressBoth_Click;
+            // 
+            // tabPageAutoInstall
+            // 
+            tabPageAutoInstall.Controls.Add(buttonMultimediaSetup);
+            tabPageAutoInstall.Location = new System.Drawing.Point(4, 24);
+            tabPageAutoInstall.Name = "tabPageAutoInstall";
+            tabPageAutoInstall.Padding = new System.Windows.Forms.Padding(3);
+            tabPageAutoInstall.Size = new System.Drawing.Size(889, 580);
+            tabPageAutoInstall.TabIndex = 5;
+            tabPageAutoInstall.Text = "Auto-install";
+            tabPageAutoInstall.UseVisualStyleBackColor = true;
+            // 
+            // buttonMultimediaSetup
+            // 
+            buttonMultimediaSetup.Location = new System.Drawing.Point(59, 53);
+            buttonMultimediaSetup.Name = "buttonMultimediaSetup";
+            buttonMultimediaSetup.Size = new System.Drawing.Size(170, 23);
+            buttonMultimediaSetup.TabIndex = 0;
+            buttonMultimediaSetup.Text = "Multimedia setup";
+            buttonMultimediaSetup.UseVisualStyleBackColor = true;
+            buttonMultimediaSetup.Click += BtnMultimediaSetup_Click;
             // 
             // labelCpuTemp
             // 
@@ -1206,26 +1316,6 @@ if ($service) {{
             buttonActivation.UseVisualStyleBackColor = true;
             buttonActivation.Click += BtnActivateWindows_Click;
             // 
-            // groupBox8
-            // 
-            groupBox8.Controls.Add(buttonStressCPU);
-            groupBox8.Location = new System.Drawing.Point(12, 16);
-            groupBox8.Name = "groupBox8";
-            groupBox8.Size = new System.Drawing.Size(200, 100);
-            groupBox8.TabIndex = 3;
-            groupBox8.TabStop = false;
-            groupBox8.Text = "CPU Stess";
-            // 
-            // groupBox9
-            // 
-            groupBox9.Controls.Add(buttonStressGPU);
-            groupBox9.Location = new System.Drawing.Point(218, 16);
-            groupBox9.Name = "groupBox9";
-            groupBox9.Size = new System.Drawing.Size(200, 100);
-            groupBox9.TabIndex = 4;
-            groupBox9.TabStop = false;
-            groupBox9.Text = "GPU Stress";
-            // 
             // MainForm
             // 
             ClientSize = new System.Drawing.Size(897, 649);
@@ -1249,10 +1339,14 @@ if ($service) {{
             groupBox7.ResumeLayout(false);
             groupBox6.ResumeLayout(false);
             tabStress.ResumeLayout(false);
-            groupBox8.ResumeLayout(false);
             groupBox9.ResumeLayout(false);
+            groupBox8.ResumeLayout(false);
+            tabPageAutoInstall.ResumeLayout(false);
             ResumeLayout(false);
         }
+
+        private System.Windows.Forms.TabPage tabPageAutoInstall;
+        private System.Windows.Forms.Button buttonMultimediaSetup;
 
         private System.Windows.Forms.GroupBox groupBox8;
         private System.Windows.Forms.GroupBox groupBox9;
