@@ -99,6 +99,9 @@ namespace Savior.UI
         private System.Windows.Forms.CheckBox checkBoxBitdefender;
         private System.Windows.Forms.CheckBox checkBoxSteam;
         private System.Windows.Forms.CheckBox checkBoxDiscord;
+        private System.Windows.Forms.CheckBox checkBoxTeams;
+        private System.Windows.Forms.CheckBox checkBoxTreeSize;
+        private System.Windows.Forms.CheckBox checkBoxHDDS;
 
         private System.Windows.Forms.Button buttonWinUpdate;
 
@@ -138,6 +141,8 @@ namespace Savior.UI
 
             if (IsInDesignMode())
                 return;
+
+            this.Icon = new Icon("Data/blacklotus.ico");
 
             // Configuration du ListView BSOD
             // listViewBSOD.Columns.Add("Date", 150);
@@ -242,6 +247,66 @@ namespace Savior.UI
         {
             try
             {
+                string createShortcutsScript = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts",
+                    "AddDesktopShortcuts.ps1");
+
+            // Crée le script s'il n'existe pas déjà
+                if (!File.Exists(createShortcutsScript))
+                {
+                    File.WriteAllText(createShortcutsScript, @"$WshShell = New-Object -ComObject WScript.Shell
+$desktop = [Environment]::GetFolderPath('Desktop')
+
+# 🗑️ Supprimer les raccourcis dont la cible est ""msedge.exe""
+Get-ChildItem -Path $desktop -Filter *.lnk | ForEach-Object {
+    try {
+        $shortcut = $WshShell.CreateShortcut($_.FullName)
+        if ($shortcut.TargetPath -match ""msedge\.exe$"") {
+            Write-Host ""Suppression du raccourci : $($_.Name)""
+            Remove-Item $_.FullName -Force
+        }
+    } catch {
+        Write-Host ""Erreur sur $($_.FullName) : $_""
+    }
+}
+
+# ✅ Ajouter ""Ce PC""
+$shortcut = $WshShell.CreateShortcut(""$desktop\Ce PC.lnk"")
+$shortcut.TargetPath = ""::{20D04FE0-3AEA-1069-A2D8-08002B30309D}""
+$shortcut.Save()
+
+# ✅ Ajouter ""Utilisateur""
+$userProfile = [Environment]::GetFolderPath(""UserProfile"")
+$shortcut = $WshShell.CreateShortcut(""$desktop\Utilisateur.lnk"")
+$shortcut.TargetPath = $userProfile
+$shortcut.Save()
+
+# ✅ Ajouter ""Panneau de configuration""
+$shortcut = $WshShell.CreateShortcut(""$desktop\Panneau de configuration.lnk"")
+$shortcut.TargetPath = ""::{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}""
+$shortcut.Save()
+
+# ✅ Tenter d’ajouter ""Corbeille""
+try {
+    (New-Object -ComObject Shell.Application).Namespace(0).ParseName('::{645FF040-5081-101B-9F08-00AA002F954E}').InvokeVerb('Créer un raccourci')
+} catch {
+    Write-Host ""Impossible d'ajouter la Corbeille (bloqué par Windows)""
+}
+
+
+");
+                }
+
+// Lancer le script avec élévation
+                ProcessStartInfo shortcutProcess = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-ExecutionPolicy Bypass -File \"{createShortcutsScript}\"",
+                    UseShellExecute = true,
+                    Verb = "runas"
+                };
+                Process.Start(shortcutProcess);
+
+
                 // 1️⃣ Activer Windows via MAS_AIO
                 string masPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "MAS_AIO.cmd");
                 if (File.Exists(masPath))
@@ -263,7 +328,7 @@ namespace Savior.UI
 
                 // 2️⃣ Lancer Windows Update
                 string windowsUpdateCommand =
-                    "-NoExit -Command \"Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force; " +
+                    "-NoExit -ExecutionPolicy Bypass -Command \"Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force; " +
                     "Install-Module PSWindowsUpdate -Force -Confirm:$false; " +
                     "Import-Module PSWindowsUpdate; " +
                     "Get-WindowsUpdate -Install -AcceptAll -IgnoreReboot\"";
@@ -682,7 +747,7 @@ if ($service) {{
             try
             {
                 string arguments =
-                    "-NoExit -Command \"Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force; " +
+                    "-NoExit -ExecutionPolicy Bypass -Command \"Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force; " +
                     "Install-Module PSWindowsUpdate -Force -Confirm:$false; " +
                     "Import-Module PSWindowsUpdate; " +
                     "Get-WindowsUpdate -Install -AcceptAll -IgnoreReboot\"";
@@ -712,7 +777,7 @@ if ($service) {{
 
                 if (checkBoxVLC != null && checkBoxVLC.Checked)
                     arguments +=
-                        "winget install --id VideoLAN.VLC -e --silent --accept-package-agreements --accept-source-agreements;\n";
+                        "winget install --id VideoLAN.VLC -e --silent --accept-package-agreements --accept-source-agreements; ";
                 if (checkBox7ZIP != null && checkBox7ZIP.Checked)
                     arguments += "winget install --id 7zip.7zip -e; ";
                 if (checkBoxChrome != null && checkBoxChrome.Checked)
@@ -731,6 +796,13 @@ if ($service) {{
                     arguments += "winget install --id Valve.Steam -e; ";
                 if (checkBoxDiscord != null && checkBoxDiscord.Checked)
                     arguments += "winget install --id Discord.Discord -e; ";
+                if (checkBoxTeams != null && checkBoxTeams.Checked)
+                    arguments += "winget install --id Microsoft.Teams -e; ";
+                if (checkBoxTreeSize != null && checkBoxTreeSize.Checked)
+                    arguments += "winget install --id JAMSoftware.TreeSize -e; ";
+                if (checkBoxHDDS != null && checkBoxHDDS.Checked)
+                    arguments += "winget install --id JanosMathe.HardDiskSentinel -e; ";
+
 
                 arguments = arguments.TrimEnd(' ', ';') + "\"";
 
@@ -769,8 +841,12 @@ if ($service) {{
         /// </summary>
         private void InitializeComponent()
         {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
             AllTabs = new System.Windows.Forms.TabControl();
             TabGeneral = new System.Windows.Forms.TabPage();
+            groupBox10 = new System.Windows.Forms.GroupBox();
+            label1 = new System.Windows.Forms.Label();
+            buttonBasicInstallGeneral = new System.Windows.Forms.Button();
             groupBox5 = new System.Windows.Forms.GroupBox();
             labelDisk = new System.Windows.Forms.Label();
             labelCPUCores = new System.Windows.Forms.Label();
@@ -785,9 +861,12 @@ if ($service) {{
             checkBoxKaspersky = new System.Windows.Forms.CheckBox();
             checkBoxBitdefender = new System.Windows.Forms.CheckBox();
             groupBox2 = new System.Windows.Forms.GroupBox();
-            checkBox7ZIP = new System.Windows.Forms.CheckBox();
-            checkBoxSublimeText = new System.Windows.Forms.CheckBox();
+            checkBoxHDDS = new System.Windows.Forms.CheckBox();
+            checkBoxTreeSize = new System.Windows.Forms.CheckBox();
             groupBox1 = new System.Windows.Forms.GroupBox();
+            checkBoxSublimeText = new System.Windows.Forms.CheckBox();
+            checkBox7ZIP = new System.Windows.Forms.CheckBox();
+            checkBoxTeams = new System.Windows.Forms.CheckBox();
             checkBoxVLC = new System.Windows.Forms.CheckBox();
             checkBoxAdobe = new System.Windows.Forms.CheckBox();
             checkBoxLibreOffice = new System.Windows.Forms.CheckBox();
@@ -808,8 +887,6 @@ if ($service) {{
             groupBox8 = new System.Windows.Forms.GroupBox();
             buttonStressCPU = new System.Windows.Forms.Button();
             buttonStressBOTH = new System.Windows.Forms.Button();
-            tabPageAutoInstall = new System.Windows.Forms.TabPage();
-            buttonMultimediaSetup = new System.Windows.Forms.Button();
             labelCpuTemp = new System.Windows.Forms.Label();
             labelGpuTemp = new System.Windows.Forms.Label();
             labelWindowsActivation = new System.Windows.Forms.Label();
@@ -818,6 +895,7 @@ if ($service) {{
             buttonActivation = new System.Windows.Forms.Button();
             AllTabs.SuspendLayout();
             TabGeneral.SuspendLayout();
+            groupBox10.SuspendLayout();
             groupBox5.SuspendLayout();
             TabSoftwares.SuspendLayout();
             groupBox4.SuspendLayout();
@@ -831,7 +909,6 @@ if ($service) {{
             tabStress.SuspendLayout();
             groupBox9.SuspendLayout();
             groupBox8.SuspendLayout();
-            tabPageAutoInstall.SuspendLayout();
             SuspendLayout();
             // 
             // AllTabs
@@ -842,7 +919,6 @@ if ($service) {{
             AllTabs.Controls.Add(tabWinUpdate);
             AllTabs.Controls.Add(tabOptimisation);
             AllTabs.Controls.Add(tabStress);
-            AllTabs.Controls.Add(tabPageAutoInstall);
             AllTabs.Dock = System.Windows.Forms.DockStyle.Top;
             AllTabs.Location = new System.Drawing.Point(0, 0);
             AllTabs.Name = "AllTabs";
@@ -852,6 +928,7 @@ if ($service) {{
             // 
             // TabGeneral
             // 
+            TabGeneral.Controls.Add(groupBox10);
             TabGeneral.Controls.Add(groupBox5);
             TabGeneral.Location = new System.Drawing.Point(4, 24);
             TabGeneral.Name = "TabGeneral";
@@ -860,6 +937,35 @@ if ($service) {{
             TabGeneral.TabIndex = 0;
             TabGeneral.Text = "General";
             TabGeneral.UseVisualStyleBackColor = true;
+            // 
+            // groupBox10
+            // 
+            groupBox10.Controls.Add(label1);
+            groupBox10.Controls.Add(buttonBasicInstallGeneral);
+            groupBox10.Location = new System.Drawing.Point(19, 274);
+            groupBox10.Name = "groupBox10";
+            groupBox10.Size = new System.Drawing.Size(200, 161);
+            groupBox10.TabIndex = 1;
+            groupBox10.TabStop = false;
+            groupBox10.Text = "Installation basique";
+            // 
+            // label1
+            // 
+            label1.Location = new System.Drawing.Point(6, 19);
+            label1.Name = "label1";
+            label1.Size = new System.Drawing.Size(174, 103);
+            label1.TabIndex = 3;
+            label1.Text = ("Installation de VLC, Adobe, Chrome et LibreOffice. Lancement du script MAS d\'acti" + "vation Windows.    Lancement du powershell pour les MAJ Windows.");
+            // 
+            // buttonBasicInstallGeneral
+            // 
+            buttonBasicInstallGeneral.Location = new System.Drawing.Point(54, 125);
+            buttonBasicInstallGeneral.Name = "buttonBasicInstallGeneral";
+            buttonBasicInstallGeneral.Size = new System.Drawing.Size(75, 23);
+            buttonBasicInstallGeneral.TabIndex = 2;
+            buttonBasicInstallGeneral.Text = "Installer";
+            buttonBasicInstallGeneral.UseVisualStyleBackColor = true;
+            buttonBasicInstallGeneral.Click += BtnMultimediaSetup_Click;
             // 
             // groupBox5
             // 
@@ -936,7 +1042,7 @@ if ($service) {{
             // 
             groupBox4.Controls.Add(checkBoxSteam);
             groupBox4.Controls.Add(checkBoxDiscord);
-            groupBox4.Location = new System.Drawing.Point(660, 155);
+            groupBox4.Location = new System.Drawing.Point(499, 155);
             groupBox4.Name = "groupBox4";
             groupBox4.Size = new System.Drawing.Size(155, 334);
             groupBox4.TabIndex = 14;
@@ -965,7 +1071,7 @@ if ($service) {{
             // 
             groupBox3.Controls.Add(checkBoxKaspersky);
             groupBox3.Controls.Add(checkBoxBitdefender);
-            groupBox3.Location = new System.Drawing.Point(499, 155);
+            groupBox3.Location = new System.Drawing.Point(338, 155);
             groupBox3.Name = "groupBox3";
             groupBox3.Size = new System.Drawing.Size(155, 334);
             groupBox3.TabIndex = 13;
@@ -983,7 +1089,7 @@ if ($service) {{
             // 
             // checkBoxBitdefender
             // 
-            checkBoxBitdefender.Location = new System.Drawing.Point(6, 49);
+            checkBoxBitdefender.Location = new System.Drawing.Point(6, 52);
             checkBoxBitdefender.Name = "checkBoxBitdefender";
             checkBoxBitdefender.Size = new System.Drawing.Size(104, 24);
             checkBoxBitdefender.TabIndex = 8;
@@ -992,35 +1098,38 @@ if ($service) {{
             // 
             // groupBox2
             // 
-            groupBox2.Controls.Add(checkBox7ZIP);
-            groupBox2.Controls.Add(checkBoxSublimeText);
-            groupBox2.Location = new System.Drawing.Point(338, 155);
+            groupBox2.Controls.Add(checkBoxHDDS);
+            groupBox2.Controls.Add(checkBoxTreeSize);
+            groupBox2.Location = new System.Drawing.Point(660, 155);
             groupBox2.Name = "groupBox2";
             groupBox2.Size = new System.Drawing.Size(155, 334);
             groupBox2.TabIndex = 12;
             groupBox2.TabStop = false;
             groupBox2.Text = "Autres";
             // 
-            // checkBox7ZIP
+            // checkBoxHDDS
             // 
-            checkBox7ZIP.Location = new System.Drawing.Point(6, 22);
-            checkBox7ZIP.Name = "checkBox7ZIP";
-            checkBox7ZIP.Size = new System.Drawing.Size(104, 24);
-            checkBox7ZIP.TabIndex = 5;
-            checkBox7ZIP.Text = "7ZIP";
-            checkBox7ZIP.UseVisualStyleBackColor = true;
+            checkBoxHDDS.Location = new System.Drawing.Point(6, 52);
+            checkBoxHDDS.Name = "checkBoxHDDS";
+            checkBoxHDDS.Size = new System.Drawing.Size(104, 24);
+            checkBoxHDDS.TabIndex = 1;
+            checkBoxHDDS.Text = "HDD Sentinel";
+            checkBoxHDDS.UseVisualStyleBackColor = true;
             // 
-            // checkBoxSublimeText
+            // checkBoxTreeSize
             // 
-            checkBoxSublimeText.Location = new System.Drawing.Point(6, 52);
-            checkBoxSublimeText.Name = "checkBoxSublimeText";
-            checkBoxSublimeText.Size = new System.Drawing.Size(104, 24);
-            checkBoxSublimeText.TabIndex = 6;
-            checkBoxSublimeText.Text = "Sublime Text";
-            checkBoxSublimeText.UseVisualStyleBackColor = true;
+            checkBoxTreeSize.Location = new System.Drawing.Point(6, 22);
+            checkBoxTreeSize.Name = "checkBoxTreeSize";
+            checkBoxTreeSize.Size = new System.Drawing.Size(104, 24);
+            checkBoxTreeSize.TabIndex = 0;
+            checkBoxTreeSize.Text = "TreeSize";
+            checkBoxTreeSize.UseVisualStyleBackColor = true;
             // 
             // groupBox1
             // 
+            groupBox1.Controls.Add(checkBoxSublimeText);
+            groupBox1.Controls.Add(checkBox7ZIP);
+            groupBox1.Controls.Add(checkBoxTeams);
             groupBox1.Controls.Add(checkBoxVLC);
             groupBox1.Controls.Add(checkBoxAdobe);
             groupBox1.Controls.Add(checkBoxLibreOffice);
@@ -1031,6 +1140,33 @@ if ($service) {{
             groupBox1.TabIndex = 11;
             groupBox1.TabStop = false;
             groupBox1.Text = "Setup de base";
+            // 
+            // checkBoxSublimeText
+            // 
+            checkBoxSublimeText.Location = new System.Drawing.Point(6, 112);
+            checkBoxSublimeText.Name = "checkBoxSublimeText";
+            checkBoxSublimeText.Size = new System.Drawing.Size(104, 24);
+            checkBoxSublimeText.TabIndex = 6;
+            checkBoxSublimeText.Text = "Sublime Text";
+            checkBoxSublimeText.UseVisualStyleBackColor = true;
+            // 
+            // checkBox7ZIP
+            // 
+            checkBox7ZIP.Location = new System.Drawing.Point(147, 82);
+            checkBox7ZIP.Name = "checkBox7ZIP";
+            checkBox7ZIP.Size = new System.Drawing.Size(104, 24);
+            checkBox7ZIP.TabIndex = 5;
+            checkBox7ZIP.Text = "7ZIP";
+            checkBox7ZIP.UseVisualStyleBackColor = true;
+            // 
+            // checkBoxTeams
+            // 
+            checkBoxTeams.Location = new System.Drawing.Point(6, 82);
+            checkBoxTeams.Name = "checkBoxTeams";
+            checkBoxTeams.Size = new System.Drawing.Size(104, 24);
+            checkBoxTeams.TabIndex = 5;
+            checkBoxTeams.Text = "Teams";
+            checkBoxTeams.UseVisualStyleBackColor = true;
             // 
             // checkBoxVLC
             // 
@@ -1080,7 +1216,7 @@ if ($service) {{
             // 
             // InstallSelection
             // 
-            InstallSelection.Location = new System.Drawing.Point(22, 19);
+            InstallSelection.Location = new System.Drawing.Point(6, 6);
             InstallSelection.Name = "InstallSelection";
             InstallSelection.Size = new System.Drawing.Size(202, 31);
             InstallSelection.TabIndex = 0;
@@ -1101,9 +1237,9 @@ if ($service) {{
             // 
             // buttonWinUpdate
             // 
-            buttonWinUpdate.Location = new System.Drawing.Point(12, 21);
+            buttonWinUpdate.Location = new System.Drawing.Point(6, 6);
             buttonWinUpdate.Name = "buttonWinUpdate";
-            buttonWinUpdate.Size = new System.Drawing.Size(144, 31);
+            buttonWinUpdate.Size = new System.Drawing.Size(202, 31);
             buttonWinUpdate.TabIndex = 0;
             buttonWinUpdate.Text = "Windows Update";
             buttonWinUpdate.UseVisualStyleBackColor = true;
@@ -1243,27 +1379,6 @@ if ($service) {{
             buttonStressBOTH.UseVisualStyleBackColor = true;
             buttonStressBOTH.Click += BtnStressBoth_Click;
             // 
-            // tabPageAutoInstall
-            // 
-            tabPageAutoInstall.Controls.Add(buttonMultimediaSetup);
-            tabPageAutoInstall.Location = new System.Drawing.Point(4, 24);
-            tabPageAutoInstall.Name = "tabPageAutoInstall";
-            tabPageAutoInstall.Padding = new System.Windows.Forms.Padding(3);
-            tabPageAutoInstall.Size = new System.Drawing.Size(889, 580);
-            tabPageAutoInstall.TabIndex = 5;
-            tabPageAutoInstall.Text = "Auto-install";
-            tabPageAutoInstall.UseVisualStyleBackColor = true;
-            // 
-            // buttonMultimediaSetup
-            // 
-            buttonMultimediaSetup.Location = new System.Drawing.Point(59, 53);
-            buttonMultimediaSetup.Name = "buttonMultimediaSetup";
-            buttonMultimediaSetup.Size = new System.Drawing.Size(170, 23);
-            buttonMultimediaSetup.TabIndex = 0;
-            buttonMultimediaSetup.Text = "Multimedia setup";
-            buttonMultimediaSetup.UseVisualStyleBackColor = true;
-            buttonMultimediaSetup.Click += BtnMultimediaSetup_Click;
-            // 
             // labelCpuTemp
             // 
             labelCpuTemp.AccessibleName = "labelCpuTemp";
@@ -1326,8 +1441,15 @@ if ($service) {{
             Controls.Add(labelGpuTemp);
             Controls.Add(labelCpuTemp);
             Controls.Add(AllTabs);
+            FormBorderStyle = System.Windows.Forms.FormBorderStyle.Fixed3D;
+            Icon = ((System.Drawing.Icon)resources.GetObject("$this.Icon"));
+            MaximizeBox = false;
+            StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+            Text = "Savior";
+            Load += MainForm_Load;
             AllTabs.ResumeLayout(false);
             TabGeneral.ResumeLayout(false);
+            groupBox10.ResumeLayout(false);
             groupBox5.ResumeLayout(false);
             TabSoftwares.ResumeLayout(false);
             groupBox4.ResumeLayout(false);
@@ -1341,12 +1463,15 @@ if ($service) {{
             tabStress.ResumeLayout(false);
             groupBox9.ResumeLayout(false);
             groupBox8.ResumeLayout(false);
-            tabPageAutoInstall.ResumeLayout(false);
             ResumeLayout(false);
         }
 
-        private System.Windows.Forms.TabPage tabPageAutoInstall;
-        private System.Windows.Forms.Button buttonMultimediaSetup;
+
+        private System.Windows.Forms.Label label1;
+
+        private System.Windows.Forms.Button buttonBasicInstallGeneral;
+
+        private System.Windows.Forms.GroupBox groupBox10;
 
         private System.Windows.Forms.GroupBox groupBox8;
         private System.Windows.Forms.GroupBox groupBox9;
