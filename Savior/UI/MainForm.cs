@@ -162,10 +162,10 @@ namespace Savior.UI
 
         private async void MainForm_Load(object? sender, EventArgs e)
         {
-            dotsTimer = new System.Windows.Forms.Timer();
-            dotsTimer.Interval = 500; // toutes les 500 ms
-            dotsTimer.Tick += (s, e) => AnimateDots();
-            dotsTimer.Start();
+            // dotsTimer = new System.Windows.Forms.Timer();
+            // dotsTimer.Interval = 500; // toutes les 500 ms
+            // dotsTimer.Tick += (s, e) => AnimateDots();
+            // dotsTimer.Start();
 
 
             if (IsInDesignMode())
@@ -500,10 +500,10 @@ if ($service) {{
 
         private void RefreshTemperatures()
         {
-            Console.WriteLine(">>> Refreshing temps...");
+            // Console.WriteLine(">>> Refreshing temps...");
 
             float cpuRealTemp = _hardwareMonitor.GetCpuRealTemperature();
-            Console.WriteLine("CPU TEMP: " + cpuRealTemp);
+            // Console.WriteLine("CPU TEMP: " + cpuRealTemp);
 
             var gpuTemps = _hardwareMonitor.GetGpuTemperatures();
             var gpuTempText = gpuTemps.Count > 0
@@ -630,74 +630,54 @@ if ($service) {{
         {
             try
             {
-                string version = Environment.OSVersion.VersionString;
-                string activationStatus = "❓ Impossible de déterminer l’état d’activation";
-                string licenseType = "❓ Inconnu";
-                string productKeyLast5 = "❓";
+                string activationStatus = "❓ Inconnu";
+                string script = @"
+Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct WHERE PartialProductKey IS NOT NULL' |
+    Select-Object -Property Name, LicenseStatus";
 
-                // PowerShell pour vérifier l’activation
-                var checkActivation = new ProcessStartInfo
+                var psi = new ProcessStartInfo
                 {
-                    FileName = "powershell",
-                    Arguments =
-                        "-Command \"(Get-CimInstance -Class SoftwareLicensingProduct | Where-Object { $_.PartialProductKey } | Select-Object -First 1).LicenseStatus\"",
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -ExecutionPolicy Bypass -Command \"" + script.Replace("\"", "`\"") + "\"",
                     RedirectStandardOutput = true,
+                    RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
 
-                string result = await RunProcessAsync(checkActivation);
+                string output = await RunProcessAsync(psi);
 
-                result = result.Trim();
-                switch (result)
+                // Analyse de la sortie
+                var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                var statusLines = lines
+                    .Where(l => l.Contains("Windows"))
+                    .ToList();
+                
+
+
+                // Recherche du premier produit avec statut actif
+                foreach (var line in statusLines)
                 {
-                    case "1":
+                    Console.WriteLine(line);
+                    if (line.Contains("1"))
+                    {
                         activationStatus = "✅ Actif";
                         break;
-                    case "0":
+                    }
+                    if (line.Contains("0"))
+                    {
                         activationStatus = "❌ Inactif";
-                        break;
-                    default:
-                        activationStatus = "❓ Inconnu";
-                        break;
-                }
-
-                // Récupérer le type de licence + les 5 derniers caractères de la clé
-                var licenseInfo = new ProcessStartInfo
-                {
-                    FileName = "powershell",
-                    Arguments =
-                        "-Command \"(Get-CimInstance SoftwareLicensingProduct | ? PartialProductKey).LicenseStatus\"",
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                string licenseOutput = await RunProcessAsync(licenseInfo);
-
-                foreach (var line in licenseOutput.Split('\n'))
-                {
-                    if (line.Contains("OEM"))
-                        licenseType = "OEM";
-                    else if (line.Contains("Retail"))
-                        licenseType = "Retail";
-                    else if (line.Contains("Volume"))
-                        licenseType = "Volume";
-
-                    if (line.Trim().Length == 5)
-                        productKeyLast5 = line.Trim();
+                    }
                 }
 
                 _windowsActivationStatus = activationStatus;
-                _windowsVersion = version;
-                _windowsLicenseType = licenseType;
-                _windowsProductKeyLast5 = productKeyLast5;
             }
             catch (Exception ex)
             {
-                _windowsActivationStatus = $"❌ Erreur lors de la vérification : {ex.Message}";
+                _windowsActivationStatus = $"❌ Erreur : {ex.Message}";
             }
         }
+
 
         private async Task<string> RunProcessAsync(ProcessStartInfo startInfo)
         {
@@ -969,6 +949,7 @@ if ($service) {{
             // 
             // groupBox5
             // 
+            groupBox5.BackColor = System.Drawing.Color.Transparent;
             groupBox5.Controls.Add(labelDisk);
             groupBox5.Controls.Add(labelCPUCores);
             groupBox5.Controls.Add(labelRAM);

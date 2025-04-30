@@ -58,7 +58,7 @@ namespace Savior.Services
                     {
                         if (sensor.SensorType == SensorType.Temperature && sensor.Value.HasValue)
                         {
-                            Console.WriteLine($"[CPU SENSOR] {sensor.Name} = {sensor.Value.Value} °C");
+                            // Console.WriteLine($"[CPU SENSOR] {sensor.Name} = {sensor.Value.Value} °C");
 
                             string sensorName = sensor.Name.ToLowerInvariant();
 
