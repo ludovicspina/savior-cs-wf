@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using Savior.Services;
 using Savior.Constants;
+using System.Text;
 
 
 namespace Savior.UI
@@ -67,36 +68,14 @@ namespace Savior.UI
         public MainForm()
         {
             InitializeComponent();
-
             if (IsInDesignMode())
                 return;
-
             this.Icon = new Icon("Data/blacklotus.ico");
-
-            // Configuration du ListView BSOD
-            // listViewBSOD.Columns.Add("Date", 150);
-            // listViewBSOD.Columns.Add("Source", 100);
-            // listViewBSOD.Columns.Add("ID", 70);
-            // listViewBSOD.Columns.Add("Message", 400);
-
-            // Configuration du ListView Virus
-            // listViewVirus.Columns.Add("Nom", 150);
-            // listViewVirus.Columns.Add("PID", 70);
-            // listViewVirus.Columns.Add("Mémoire (MB)", 100);
-            // listViewVirus.Columns.Add("Signé", 70);
-            // listViewVirus.Columns.Add("Chemin", 400);
-
             this.Load += MainForm_Load;
         }
 
         private async void MainForm_Load(object? sender, EventArgs e)
         {
-            // dotsTimer = new Timer();
-            // dotsTimer.Interval = 500; // toutes les 500 ms
-            // dotsTimer.Tick += (s, e) => AnimateDots();
-            // dotsTimer.Start();
-
-
             if (IsInDesignMode())
                 return;
 
@@ -142,11 +121,7 @@ namespace Savior.UI
             {
                 try
                 {
-                    Console.WriteLine(">> Lancement de CheckWindowsActivationStatusAsync...");
-
-                    await CheckWindowsActivationStatusAsync(); // 🔥 1) On attend vraiment la fin du check
-
-                    Console.WriteLine(">> Fin de CheckWindowsActivationStatusAsync !");
+                    await CheckWindowsActivationStatusAsync();
 
                     Invoke(() =>
                     {
@@ -177,132 +152,149 @@ namespace Savior.UI
             _hardwareMonitor = new HardwareMonitorService();
             _systemInfo = new SystemInfoService();
         }
-
-        private async void BtnMultimediaSetup_Click(object sender, EventArgs e)
+        
+        private async Task CreateShortcutsAsync()
         {
-            try
-            {
-                string createShortcutsScript = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts",
-                    "AddDesktopShortcuts.ps1");
+            string scriptPath =
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "AddDesktopShortcuts.ps1");
 
-                // Crée le script s'il n'existe pas déjà
-                if (!File.Exists(createShortcutsScript))
-                {
-                    File.WriteAllText(createShortcutsScript, @"$WshShell = New-Object -ComObject WScript.Shell
-$desktop = [Environment]::GetFolderPath('Desktop')
+            if (!File.Exists(scriptPath))
+                throw new FileNotFoundException("Script AddDesktopShortcuts.ps1 introuvable.");
 
-# 🗑️ Supprimer les raccourcis dont la cible est ""msedge.exe""
-Get-ChildItem -Path $desktop -Filter *.lnk | ForEach-Object {
-    try {
-        $shortcut = $WshShell.CreateShortcut($_.FullName)
-        if ($shortcut.TargetPath -match ""msedge\.exe$"") {
-            Write-Host ""Suppression du raccourci : $($_.Name)""
-            Remove-Item $_.FullName -Force
+            RunPowerShellScript(scriptPath);
+            await Task.Delay(1000);
         }
-    } catch {
-        Write-Host ""Erreur sur $($_.FullName) : $_""
-    }
-}
 
-# ✅ Ajouter ""Ce PC""
-$shortcut = $WshShell.CreateShortcut(""$desktop\Ce PC.lnk"")
-$shortcut.TargetPath = ""::{20D04FE0-3AEA-1069-A2D8-08002B30309D}""
-$shortcut.Save()
-
-# ✅ Ajouter ""Utilisateur""
-$userProfile = [Environment]::GetFolderPath(""UserProfile"")
-$shortcut = $WshShell.CreateShortcut(""$desktop\Utilisateur.lnk"")
-$shortcut.TargetPath = $userProfile
-$shortcut.Save()
-
-# ✅ Ajouter ""Panneau de configuration""
-$shortcut = $WshShell.CreateShortcut(""$desktop\Panneau de configuration.lnk"")
-$shortcut.TargetPath = ""::{5399E694-6CE5-4D6C-8FCE-1D8870FDCBA0}""
-$shortcut.Save()
-
-# ✅ Tenter d’ajouter ""Corbeille""
-try {
-    (New-Object -ComObject Shell.Application).Namespace(0).ParseName('::{645FF040-5081-101B-9F08-00AA002F954E}').InvokeVerb('Créer un raccourci')
-} catch {
-    Write-Host ""Impossible d'ajouter la Corbeille (bloqué par Windows)""
-}
-
-
-");
-                }
-
-// Lancer le script avec élévation
-                ProcessStartInfo shortcutProcess = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-ExecutionPolicy Bypass -File \"{createShortcutsScript}\"",
-                    UseShellExecute = true,
-                    Verb = "runas"
-                };
-                Process.Start(shortcutProcess);
-
-
-                // 1️⃣ Activer Windows via MAS_AIO
+        private async Task ActivateWindowsIfNeededAsync()
+        {
+            if (!_windowsActivationStatus.Contains("Activé"))
+            {
                 string masPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "MAS_AIO.cmd");
-                if (File.Exists(masPath))
-                {
-                    ProcessStartInfo masProcess = new ProcessStartInfo
-                    {
-                        FileName = masPath,
-                        WorkingDirectory = Path.GetDirectoryName(masPath),
-                        UseShellExecute = true,
-                        Verb = "runas"
-                    };
-                    Process.Start(masProcess);
-                    await Task.Delay(1000); // Petit délai pour laisser MAS démarrer
-                }
-                else
+                if (!File.Exists(masPath))
                 {
                     MessageBox.Show("MAS_AIO.cmd non trouvé.");
+                    return;
                 }
 
-                // 2️⃣ Lancer Windows Update
-                string windowsUpdateCommand =
-                    "-NoExit -ExecutionPolicy Bypass -Command \"Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force; " +
-                    "Install-Module PSWindowsUpdate -Force -Confirm:$false; " +
-                    "Import-Module PSWindowsUpdate; " +
-                    "Get-WindowsUpdate -Install -AcceptAll -IgnoreReboot\"";
-
-                ProcessStartInfo updateProcess = new ProcessStartInfo
+                Process.Start(new ProcessStartInfo
                 {
-                    FileName = "powershell.exe",
-                    Arguments = windowsUpdateCommand,
+                    FileName = masPath,
+                    WorkingDirectory = Path.GetDirectoryName(masPath),
                     UseShellExecute = true,
                     Verb = "runas"
-                };
-                Process.Start(updateProcess);
+                });
 
-                await Task.Delay(1000); // Laisse Windows Update se préparer un peu
-
-                // 3️⃣ Installer VLC, LibreOffice, Adobe Reader, Chrome
-                string appsInstallCommand =
-                    "-NoExit -Command \"" +
-                    "winget install --id VideoLAN.VLC -e --silent --accept-package-agreements --accept-source-agreements; " +
-                    "winget install --id TheDocumentFoundation.LibreOffice -e --silent --accept-package-agreements --accept-source-agreements; " +
-                    "winget install --id Adobe.Acrobat.Reader.64-bit -e --silent --accept-package-agreements --accept-source-agreements; " +
-                    "winget install --id Google.Chrome -e --silent --accept-package-agreements --accept-source-agreements; " +
-                    "\"";
-
-                ProcessStartInfo installProcess = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = appsInstallCommand,
-                    UseShellExecute = true,
-                    Verb = "runas"
-                };
-                Process.Start(installProcess);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Erreur dans le setup multimédia : {ex.Message}");
+                await Task.Delay(1000);
             }
         }
 
+        private async Task RunWindowsUpdateAsync()
+        {
+            string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "WindowsUpdate.ps1");
+
+            if (!File.Exists(scriptPath))
+                throw new FileNotFoundException("Script WindowsUpdate.ps1 introuvable.");
+
+            RunPowerShellScript(scriptPath);
+            await Task.Delay(1000);
+        }
+
+        private async Task InstallEssentialAppsAsync()
+        {
+            string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "InstallApps.ps1");
+
+            if (!File.Exists(scriptPath))
+                throw new FileNotFoundException("Script InstallApps.ps1 introuvable.");
+
+            RunPowerShellScript(scriptPath);
+            await Task.Delay(1000);
+        }
+
+        private async Task RemoveBloatwaresAsync()
+        {
+            var script = new StringBuilder();
+
+            foreach (var item in checkedListBoxApps.Items)
+            {
+                if (checkedListBoxApps.GetItemChecked(checkedListBoxApps.Items.IndexOf(item)))
+                {
+                    string appName = item.ToString();
+                    script.AppendLine($@"
+$package = Get-AppxPackage -Name '{appName}' -ErrorAction SilentlyContinue
+if ($package) {{
+    Remove-AppxPackage $package -ErrorAction SilentlyContinue
+    Write-Output '{appName} -> Désinstallé'
+}} else {{
+    Write-Output '{appName} -> Non trouvé'
+}}");
+                }
+            }
+
+            if (script.Length > 0)
+            {
+                script.AppendLine("Start-Sleep -Seconds 5");
+                script.AppendLine("exit");
+                RunPowerShellScript(script.ToString());
+                await Task.Delay(1000);
+            }
+        }
+
+        private async Task DisableUnwantedServicesAsync()
+        {
+            var selectedServices = new List<string>();
+
+            foreach (var item in checkedListBoxServices.Items)
+            {
+                if (checkedListBoxServices.GetItemChecked(checkedListBoxServices.Items.IndexOf(item)))
+                {
+                    selectedServices.Add(item.ToString());
+                }
+            }
+
+            if (selectedServices.Any())
+            {
+                string scriptPath =
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "DisableServices.ps1");
+
+                if (!File.Exists(scriptPath))
+                    throw new FileNotFoundException("Script DisableServices.ps1 introuvable.");
+
+                string joinedServices = string.Join(",", selectedServices.Select(s => s.Replace("'", "''")));
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\" -Services \"{joinedServices}\"",
+                    UseShellExecute = true,
+                    Verb = "runas"
+                };
+
+                Process.Start(psi);
+                await Task.Delay(1000);
+            }
+        }
+
+        private void RunPowerShellScript(string scriptPathOrContent)
+        {
+            string tempFile = scriptPathOrContent;
+
+            if (!File.Exists(scriptPathOrContent))
+            {
+                // Si on passe un contenu directement, l’écrire dans un fichier temporaire
+                tempFile = Path.Combine(Path.GetTempPath(), $"tmp_{Guid.NewGuid()}.ps1");
+                File.WriteAllText(tempFile, scriptPathOrContent);
+            }
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-ExecutionPolicy Bypass -File \"{tempFile}\"",
+                UseShellExecute = true,
+                Verb = "runas"
+            };
+
+            Process.Start(psi);
+        }
 
         private void LoadOptimizationLists()
         {
@@ -337,8 +329,148 @@ try {
                 checkedListBoxServices.Items.Add(service, isChecked);
             }
         }
+        
+        private void LaunchPowerShellScript(string scriptContent)
+        {
+            try
+            {
+                string tempScriptPath = Path.Combine(Path.GetTempPath(), $"SaviorScript_{Guid.NewGuid()}.ps1");
+                File.WriteAllText(tempScriptPath, scriptContent);
 
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoExit -ExecutionPolicy Bypass -File \"{tempScriptPath}\"",
+                    UseShellExecute = true,
+                    Verb = "runas" // Admin obligatoire
+                };
 
+                Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lors de l'exécution du script PowerShell : {ex.Message}");
+            }
+        }
+        
+        private void RefreshTemperatures()
+        {
+            // Console.WriteLine(">>> Refreshing temps...");
+
+            float cpuRealTemp = _hardwareMonitor.GetCpuRealTemperature();
+            // Console.WriteLine("CPU TEMP: " + cpuRealTemp);
+
+            var gpuTemps = _hardwareMonitor.GetGpuTemperatures();
+            var gpuTempText = gpuTemps.Count > 0
+                ? string.Join("  ", gpuTemps.Select(t => $"GPU: {t.Value:F1} °C"))
+                : "GPU: 0.0 °C";
+
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() =>
+                {
+                    labelCpuTemp.Text = $"CPU: {cpuRealTemp:F1} °C";
+                    labelGpuTemp.Text = gpuTempText;
+                }));
+            }
+            else
+            {
+                labelCpuTemp.Text = $"CPU: {cpuRealTemp:F1} °C";
+                labelGpuTemp.Text = gpuTempText;
+            }
+
+            if (float.IsNaN(cpuRealTemp))
+                Console.WriteLine("⚠️ Température CPU non trouvée");
+        }
+        
+        private async void StartCpuStress()
+        {
+            if (isCpuStressRunning)
+                return;
+
+            isCpuStressRunning = true;
+            stressCancellationTokenSource = new CancellationTokenSource();
+
+            await Task.Run(() =>
+            {
+                try
+                {
+                    while (!stressCancellationTokenSource.Token.IsCancellationRequested)
+                    {
+                        // Charge CPU simple
+                        double x = Math.Pow(12345.6789, 9876.5432);
+
+                        // Vérifie température CPU
+                        float cpuTemp = _hardwareMonitor.GetCpuRealTemperature();
+                        if (cpuTemp > 85)
+                        {
+                            Invoke(() =>
+                                MessageBox.Show($"⚠️ Température CPU trop haute ({cpuTemp} °C) ! Test arrêté."));
+                            StopCpuStress();
+                            break;
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Normal : annulé
+                }
+            }, stressCancellationTokenSource.Token);
+        }
+
+        private void StopCpuStress()
+        {
+            isCpuStressRunning = false;
+            stressCancellationTokenSource?.Cancel();
+        }
+        
+        private void StartGpuStress()
+        {
+            try
+            {
+                string furmarkPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                    @"Data\FurMark_win64\FurMark_GUI.exe");
+
+                if (!File.Exists(furmarkPath))
+                {
+                    MessageBox.Show("FurMark non trouvé : " + furmarkPath);
+                    return;
+                }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = furmarkPath,
+                    UseShellExecute = true,
+                    Verb = "runas"
+                };
+
+                furmarkProcess = Process.Start(psi);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lancement FurMark : {ex.Message}");
+            }
+        }
+
+        private async void BtnMultimediaSetup_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                await CreateShortcutsAsync();
+                await ActivateWindowsIfNeededAsync();
+                await RunWindowsUpdateAsync();
+                await InstallEssentialAppsAsync();
+                await RemoveBloatwaresAsync();
+                await DisableUnwantedServicesAsync();
+
+                MessageBox.Show("Setup multimédia terminé ✅");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur dans le setup multimédia : {ex.Message}");
+            }
+        }
+        
         private void BtnUninstallSelectedApps_Click(object sender, EventArgs e)
         {
             if (checkedListBoxApps.CheckedItems.Count == 0)
@@ -397,132 +529,7 @@ if ($service) {{
 
             LaunchPowerShellScript(psCommand);
         }
-
-        private void LaunchPowerShellScript(string scriptContent)
-        {
-            try
-            {
-                string tempScriptPath = Path.Combine(Path.GetTempPath(), $"SaviorScript_{Guid.NewGuid()}.ps1");
-                File.WriteAllText(tempScriptPath, scriptContent);
-
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = $"-NoExit -ExecutionPolicy Bypass -File \"{tempScriptPath}\"",
-                    UseShellExecute = true,
-                    Verb = "runas" // Admin obligatoire
-                };
-
-                Process.Start(psi);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Erreur lors de l'exécution du script PowerShell : {ex.Message}");
-            }
-        }
-
-
-        private void RefreshTemperatures()
-        {
-            // Console.WriteLine(">>> Refreshing temps...");
-
-            float cpuRealTemp = _hardwareMonitor.GetCpuRealTemperature();
-            // Console.WriteLine("CPU TEMP: " + cpuRealTemp);
-
-            var gpuTemps = _hardwareMonitor.GetGpuTemperatures();
-            var gpuTempText = gpuTemps.Count > 0
-                ? string.Join("  ", gpuTemps.Select(t => $"GPU: {t.Value:F1} °C"))
-                : "GPU: 0.0 °C";
-
-            if (InvokeRequired)
-            {
-                Invoke(new Action(() =>
-                {
-                    labelCpuTemp.Text = $"CPU: {cpuRealTemp:F1} °C";
-                    labelGpuTemp.Text = gpuTempText;
-                }));
-            }
-            else
-            {
-                labelCpuTemp.Text = $"CPU: {cpuRealTemp:F1} °C";
-                labelGpuTemp.Text = gpuTempText;
-            }
-
-            if (float.IsNaN(cpuRealTemp))
-                Console.WriteLine("⚠️ Température CPU non trouvée");
-        }
-
-// === CPU STRESS ===
-        private async void StartCpuStress()
-        {
-            if (isCpuStressRunning)
-                return;
-
-            isCpuStressRunning = true;
-            stressCancellationTokenSource = new CancellationTokenSource();
-
-            await Task.Run(() =>
-            {
-                try
-                {
-                    while (!stressCancellationTokenSource.Token.IsCancellationRequested)
-                    {
-                        // Charge CPU simple
-                        double x = Math.Pow(12345.6789, 9876.5432);
-
-                        // Vérifie température CPU
-                        float cpuTemp = _hardwareMonitor.GetCpuRealTemperature();
-                        if (cpuTemp > 85)
-                        {
-                            Invoke(() =>
-                                MessageBox.Show($"⚠️ Température CPU trop haute ({cpuTemp} °C) ! Test arrêté."));
-                            StopCpuStress();
-                            break;
-                        }
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    // Normal : annulé
-                }
-            }, stressCancellationTokenSource.Token);
-        }
-
-        private void StopCpuStress()
-        {
-            isCpuStressRunning = false;
-            stressCancellationTokenSource?.Cancel();
-        }
-
-// === GPU STRESS ===
-        private void StartGpuStress()
-        {
-            try
-            {
-                string furmarkPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
-                    @"Data\FurMark_win64\FurMark_GUI.exe");
-
-                if (!File.Exists(furmarkPath))
-                {
-                    MessageBox.Show("FurMark non trouvé : " + furmarkPath);
-                    return;
-                }
-
-                var psi = new ProcessStartInfo
-                {
-                    FileName = furmarkPath,
-                    UseShellExecute = true,
-                    Verb = "runas"
-                };
-
-                furmarkProcess = Process.Start(psi);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Erreur lancement FurMark : {ex.Message}");
-            }
-        }
-
+        
         private void BtnStressCpu_Click(object sender, EventArgs e)
         {
             if (!isCpuStressRunning)
@@ -540,70 +547,6 @@ if ($service) {{
         {
             StartCpuStress();
             StartGpuStress();
-        }
-
-        private async Task CheckWindowsActivationStatusAsync()
-        {
-            try
-            {
-                string activationStatus = "❓ Inconnu";
-                string script = @"
-Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct WHERE PartialProductKey IS NOT NULL' |
-    Select-Object -Property Name, LicenseStatus";
-
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powershell.exe",
-                    Arguments = "-NoProfile -ExecutionPolicy Bypass -Command \"" + script.Replace("\"", "`\"") + "\"",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                string output = await RunProcessAsync(psi);
-
-                // Analyse de la sortie
-                var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                var statusLines = lines
-                    .Where(l => l.Contains("Windows"))
-                    .ToList();
-
-
-                // Recherche du premier produit avec statut actif
-                foreach (var line in statusLines)
-                {
-                    Console.WriteLine(line);
-                    if (line.Contains("1"))
-                    {
-                        activationStatus = "✅ Actif";
-                        break;
-                    }
-
-                    if (line.Contains("0"))
-                    {
-                        activationStatus = "❌ Inactif";
-                    }
-                }
-
-                _windowsActivationStatus = activationStatus;
-            }
-            catch (Exception ex)
-            {
-                _windowsActivationStatus = $"❌ Erreur : {ex.Message}";
-            }
-        }
-
-
-        private async Task<string> RunProcessAsync(ProcessStartInfo startInfo)
-        {
-            using (var process = new Process { StartInfo = startInfo })
-            {
-                process.Start();
-                string output = await process.StandardOutput.ReadToEndAsync();
-                await process.WaitForExitAsync();
-                return output;
-            }
         }
 
         private void BtnActivateWindows_Click(object sender, EventArgs e)
@@ -637,7 +580,6 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             }
         }
 
-
         private void ButtonWinUpdate_Click(object sender, EventArgs e)
         {
             try
@@ -663,8 +605,7 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
                 MessageBox.Show($"Erreur PowerShell: {ex.Message}");
             }
         }
-
-
+        
         private void BtnOpenPowerShell_Click(object sender, EventArgs e)
         {
             try
@@ -716,16 +657,72 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
                 MessageBox.Show($"Erreur PowerShell: {ex.Message}");
             }
         }
-
-
-        private void SafeAddItem(ListView listView, ListViewItem item)
+        
+        private async Task CheckWindowsActivationStatusAsync()
         {
-            if (listView.InvokeRequired)
-                listView.Invoke(() => listView.Items.Add(item));
-            else
-                listView.Items.Add(item);
+            try
+            {
+                string activationStatus = "❓ Inconnu";
+                string script = @"
+Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct WHERE PartialProductKey IS NOT NULL' |
+    Select-Object -Property Name, LicenseStatus";
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -ExecutionPolicy Bypass -Command \"" + script.Replace("\"", "`\"") + "\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                string output = await RunProcessAsync(psi);
+
+                // Analyse de la sortie
+                var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                var statusLines = lines
+                    .Where(l => l.Contains("Windows"))
+                    .ToList();
+
+
+                // Recherche du premier produit avec statut actif
+                foreach (var line in statusLines)
+                {
+                    Console.WriteLine(line);
+                    if (line.Contains("1"))
+                    {
+                        activationStatus = "✅ Actif";
+                        break;
+                    }
+
+                    if (line.Contains("0"))
+                    {
+                        activationStatus = "❌ Inactif";
+                    }
+                }
+
+                _windowsActivationStatus = activationStatus;
+            }
+            catch (Exception ex)
+            {
+                _windowsActivationStatus = $"❌ Erreur : {ex.Message}";
+            }
+        }
+        
+        private async Task<string> RunProcessAsync(ProcessStartInfo startInfo)
+        {
+            using (var process = new Process { StartInfo = startInfo })
+            {
+                process.Start();
+                string output = await process.StandardOutput.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                return output;
+            }
         }
 
+
+        
         private bool IsInDesignMode()
         {
             return LicenseManager.UsageMode == LicenseUsageMode.Designtime || DesignMode;
