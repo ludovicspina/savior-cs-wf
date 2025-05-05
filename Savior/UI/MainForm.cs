@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Compression;
 using Savior.Services;
 using Savior.Constants;
 using System.Text;
@@ -12,7 +13,7 @@ namespace Savior.UI
         private HardwareMonitorService _hardwareMonitor;
         private SystemInfoService _systemInfo;
 
-        private Button _buttonActivation;
+        private System.Windows.Forms.Button _buttonActivation;
 
         private TabPage _tabStress;
         private Button _buttonStressCpu;
@@ -32,7 +33,7 @@ namespace Savior.UI
         private Label labelGPURef2;
         private Label labelGPURef;
         private Label labelRAM;
-        private Label labelCPUCores;
+        private System.Windows.Forms.Label labelCPUCores;
         private Label labelDisk;
 
 
@@ -41,12 +42,12 @@ namespace Savior.UI
         private Button buttonOptimisation;
         private Button buttonBloatWare;
 
-        private CheckBox checkBoxVLC;
+        private System.Windows.Forms.CheckBox checkBoxVLC;
         private CheckBox checkBox7ZIP;
-        private CheckBox checkBoxChrome;
-        private CheckBox checkBoxAdobe;
+        private System.Windows.Forms.CheckBox checkBoxChrome;
+        private System.Windows.Forms.CheckBox checkBoxAdobe;
         private CheckBox checkBoxSublimeText;
-        private CheckBox checkBoxLibreOffice;
+        private System.Windows.Forms.CheckBox checkBoxLibreOffice;
         private CheckBox checkBoxKaspersky;
         private CheckBox checkBoxBitdefender;
         private CheckBox checkBoxSteam;
@@ -54,6 +55,12 @@ namespace Savior.UI
         private CheckBox checkBoxTeams;
         private CheckBox checkBoxTreeSize;
         private CheckBox checkBoxHDDS;
+        private CheckBox checkBoxNvidiaApp;
+        private CheckBox checkBoxLenovoVantage;
+        private CheckBox checkBoxMyAsus;
+        private CheckBox checkBoxHpSmart;
+
+        private System.Windows.Forms.Label labelManu;
 
         private Button buttonWinUpdate;
 
@@ -95,6 +102,7 @@ namespace Savior.UI
                     var gpu = _systemInfo.GetGpuInfo();
                     var ram = _systemInfo.GetRamInfo();
                     var disk = _systemInfo.GetDiskInfo();
+                    var manu = _systemInfo.GetManuInfo();
 
                     Console.WriteLine(disk);
 
@@ -109,6 +117,7 @@ namespace Savior.UI
                         labelDisk.Text = "Disques :\r\n" + disk;
                         labelGPURef.Text = gpu;
                         labelGPURef2.Text = gpu;
+                        labelManu.Text = manu;
                     });
                 }
                 catch (Exception ex)
@@ -142,6 +151,34 @@ namespace Savior.UI
                     });
                 }
             });
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    string localVersionPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "version.txt");
+                    string localVersion = File.Exists(localVersionPath)
+                        ? File.ReadAllText(localVersionPath).Trim()
+                        : "0.0.0";
+
+                    using var client = new HttpClient();
+                    string remoteVersion = await client.GetStringAsync("http://deifall.com/savior-updater/version.txt");
+                    remoteVersion = remoteVersion.Trim();
+
+                    if (localVersion != remoteVersion)
+                    {
+                        Invoke(() =>
+                        {
+                            buttonMaj.Visible = true;
+                            buttonMaj.Text = $"Mettre à jour ({localVersion} → {remoteVersion})";
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("⚠️ Erreur vérification MAJ : " + ex.Message);
+                }
+            });
         }
 
         private void InitializeServices()
@@ -152,7 +189,7 @@ namespace Savior.UI
             _hardwareMonitor = new HardwareMonitorService();
             _systemInfo = new SystemInfoService();
         }
-        
+
         private async Task CreateShortcutsAsync()
         {
             string scriptPath =
@@ -167,7 +204,7 @@ namespace Savior.UI
 
         private async Task ActivateWindowsIfNeededAsync()
         {
-            if (!_windowsActivationStatus.Contains("Activé"))
+            if (!_windowsActivationStatus.Contains("Actif"))
             {
                 string masPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "MAS_AIO.cmd");
                 if (!File.Exists(masPath))
@@ -329,7 +366,7 @@ if ($package) {{
                 checkedListBoxServices.Items.Add(service, isChecked);
             }
         }
-        
+
         private void LaunchPowerShellScript(string scriptContent)
         {
             try
@@ -352,7 +389,7 @@ if ($package) {{
                 MessageBox.Show($"Erreur lors de l'exécution du script PowerShell : {ex.Message}");
             }
         }
-        
+
         private void RefreshTemperatures()
         {
             // Console.WriteLine(">>> Refreshing temps...");
@@ -382,7 +419,7 @@ if ($package) {{
             if (float.IsNaN(cpuRealTemp))
                 Console.WriteLine("⚠️ Température CPU non trouvée");
         }
-        
+
         private async void StartCpuStress()
         {
             if (isCpuStressRunning)
@@ -423,7 +460,7 @@ if ($package) {{
             isCpuStressRunning = false;
             stressCancellationTokenSource?.Cancel();
         }
-        
+
         private void StartGpuStress()
         {
             try
@@ -452,6 +489,51 @@ if ($package) {{
             }
         }
 
+        private async void ButtonUpdate_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                buttonMaj.Enabled = false;
+                buttonMaj.Text = "Téléchargement...";
+
+                string zipUrl = "http://deifall.com/savior-updater/Savior.zip";
+                string zipPath = Path.Combine(Path.GetTempPath(), "Savior_Update.zip");
+                string extractPath = Path.Combine(Path.GetTempPath(), "Savior_Extracted");
+                string appFolder = AppDomain.CurrentDomain.BaseDirectory;
+
+                using var client = new HttpClient();
+                var data = await client.GetByteArrayAsync(zipUrl);
+                await File.WriteAllBytesAsync(zipPath, data);
+
+                if (Directory.Exists(extractPath))
+                    Directory.Delete(extractPath, true);
+                ZipFile.ExtractToDirectory(zipPath, extractPath);
+
+                foreach (string file in Directory.GetFiles(extractPath, "*", SearchOption.AllDirectories))
+                {
+                    string relativePath = Path.GetRelativePath(extractPath, file);
+                    string destPath = Path.Combine(appFolder, relativePath);
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+                    File.Copy(file, destPath, true);
+                }
+
+                Directory.Delete(extractPath, true);
+                File.Delete(zipPath);
+
+                MessageBox.Show("✅ Mise à jour installée. L’application va redémarrer.");
+
+                Process.Start(Path.Combine(appFolder, "Savior.exe"));
+                Environment.Exit(0);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("❌ Erreur MAJ : " + ex.Message);
+            }
+        }
+
+
+
         private async void BtnMultimediaSetup_Click(object sender, EventArgs e)
         {
             try
@@ -463,14 +545,14 @@ if ($package) {{
                 await RemoveBloatwaresAsync();
                 await DisableUnwantedServicesAsync();
 
-                MessageBox.Show("Setup multimédia terminé ✅");
+                // MessageBox.Show("Setup multimédia terminé ✅");
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Erreur dans le setup multimédia : {ex.Message}");
             }
         }
-        
+
         private void BtnUninstallSelectedApps_Click(object sender, EventArgs e)
         {
             if (checkedListBoxApps.CheckedItems.Count == 0)
@@ -529,7 +611,7 @@ if ($service) {{
 
             LaunchPowerShellScript(psCommand);
         }
-        
+
         private void BtnStressCpu_Click(object sender, EventArgs e)
         {
             if (!isCpuStressRunning)
@@ -584,28 +666,31 @@ if ($service) {{
         {
             try
             {
-                string arguments =
-                    "-NoExit -ExecutionPolicy Bypass -Command \"Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force; " +
-                    "Install-Module PSWindowsUpdate -Force -Confirm:$false; " +
-                    "Import-Module PSWindowsUpdate; " +
-                    "Get-WindowsUpdate -Install -AcceptAll -IgnoreReboot\"";
+                string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Scripts", "WindowsUpdate.ps1");
 
-                ProcessStartInfo psi = new ProcessStartInfo
+                if (!File.Exists(scriptPath))
                 {
-                    FileName = "powershell",
-                    Arguments = arguments,
+                    MessageBox.Show("Le script WindowsUpdate.ps1 est introuvable.");
+                    return;
+                }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-ExecutionPolicy Bypass -File \"{scriptPath}\"",
                     UseShellExecute = true,
-                    Verb = "runas" // ✅ Ouvre avec élévation (admin)
+                    Verb = "runas" // 🛡️ Lancement en tant qu'administrateur
                 };
 
                 Process.Start(psi);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Erreur PowerShell: {ex.Message}");
+                MessageBox.Show($"Erreur lors du lancement de la mise à jour Windows : {ex.Message}");
             }
         }
-        
+
+
         private void BtnOpenPowerShell_Click(object sender, EventArgs e)
         {
             try
@@ -639,6 +724,14 @@ if ($service) {{
                     arguments += "winget install --id JAMSoftware.TreeSize -e; ";
                 if (checkBoxHDDS != null && checkBoxHDDS.Checked)
                     arguments += "winget install --id JanosMathe.HardDiskSentinel -e; ";
+                if (checkBoxNvidiaApp != null && checkBoxNvidiaApp.Checked)
+                    arguments += "winget install --id Nvidia.App -e; ";
+                if (checkBoxLenovoVantage != null && checkBoxLenovoVantage.Checked)
+                    arguments += "winget install --id 9WZDNCRFJ4MV -e; ";
+                if (checkBoxHpSmart != null && checkBoxHpSmart.Checked)
+                    arguments += "winget install --id 9WZDNCRFHWLH -e; ";
+                if (checkBoxMyAsus != null && checkBoxMyAsus.Checked)
+                    arguments += "winget install --id 9N7R5S6B0ZZH -e; ";
 
 
                 arguments = arguments.TrimEnd(' ', ';') + "\"";
@@ -657,7 +750,7 @@ if ($service) {{
                 MessageBox.Show($"Erreur PowerShell: {ex.Message}");
             }
         }
-        
+
         private async Task CheckWindowsActivationStatusAsync()
         {
             try
@@ -709,7 +802,7 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
                 _windowsActivationStatus = $"❌ Erreur : {ex.Message}";
             }
         }
-        
+
         private async Task<string> RunProcessAsync(ProcessStartInfo startInfo)
         {
             using (var process = new Process { StartInfo = startInfo })
@@ -722,7 +815,6 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
         }
 
 
-        
         private bool IsInDesignMode()
         {
             return LicenseManager.UsageMode == LicenseUsageMode.Designtime || DesignMode;
@@ -734,61 +826,70 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
         /// </summary>
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources =
-                new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
-            AllTabs = new TabControl();
-            TabGeneral = new TabPage();
-            groupBox10 = new GroupBox();
-            label1 = new Label();
-            buttonBasicInstallGeneral = new Button();
-            groupBox5 = new GroupBox();
-            labelDisk = new Label();
-            labelCPUCores = new Label();
-            labelRAM = new Label();
-            labelGPURef2 = new Label();
-            labelCPURef2 = new Label();
-            TabSoftwares = new TabPage();
-            groupBox4 = new GroupBox();
-            checkBoxSteam = new CheckBox();
-            checkBoxDiscord = new CheckBox();
-            groupBox3 = new GroupBox();
-            checkBoxKaspersky = new CheckBox();
-            checkBoxBitdefender = new CheckBox();
-            groupBox2 = new GroupBox();
-            checkBoxHDDS = new CheckBox();
-            checkBoxTreeSize = new CheckBox();
-            groupBox1 = new GroupBox();
-            checkBoxSublimeText = new CheckBox();
-            checkBox7ZIP = new CheckBox();
-            checkBoxTeams = new CheckBox();
-            checkBoxVLC = new CheckBox();
-            checkBoxAdobe = new CheckBox();
-            checkBoxLibreOffice = new CheckBox();
-            checkBoxChrome = new CheckBox();
-            InstallSelection = new Button();
-            tabWinUpdate = new TabPage();
-            buttonWinUpdate = new Button();
-            tabOptimisation = new TabPage();
-            groupBox7 = new GroupBox();
-            checkedListBoxServices = new CheckedListBox();
-            buttonOptimisation = new Button();
-            groupBox6 = new GroupBox();
-            checkedListBoxApps = new CheckedListBox();
-            buttonBloatWare = new Button();
-            _tabStress = new TabPage();
-            groupBox9 = new GroupBox();
-            _buttonStressGPU = new Button();
-            groupBox8 = new GroupBox();
-            _buttonStressCpu = new Button();
-            buttonStressBOTH = new Button();
-            labelCpuTemp = new Label();
-            labelGpuTemp = new Label();
-            labelWindowsActivation = new Label();
-            labelCPURef = new Label();
-            labelGPURef = new Label();
-            _buttonActivation = new Button();
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
+            AllTabs = new System.Windows.Forms.TabControl();
+            TabGeneral = new System.Windows.Forms.TabPage();
+            buttonMaj = new System.Windows.Forms.Button();
+            groupBox11 = new System.Windows.Forms.GroupBox();
+            labelManu = new System.Windows.Forms.Label();
+            groupBox10 = new System.Windows.Forms.GroupBox();
+            label1 = new System.Windows.Forms.Label();
+            buttonBasicInstallGeneral = new System.Windows.Forms.Button();
+            groupBox5 = new System.Windows.Forms.GroupBox();
+            labelDisk = new System.Windows.Forms.Label();
+            labelCPUCores = new System.Windows.Forms.Label();
+            labelRAM = new System.Windows.Forms.Label();
+            labelGPURef2 = new System.Windows.Forms.Label();
+            labelCPURef2 = new System.Windows.Forms.Label();
+            TabSoftwares = new System.Windows.Forms.TabPage();
+            groupBox4 = new System.Windows.Forms.GroupBox();
+            checkBoxSteam = new System.Windows.Forms.CheckBox();
+            checkBoxDiscord = new System.Windows.Forms.CheckBox();
+            groupBox3 = new System.Windows.Forms.GroupBox();
+            checkBoxKaspersky = new System.Windows.Forms.CheckBox();
+            checkBoxBitdefender = new System.Windows.Forms.CheckBox();
+            groupBox2 = new System.Windows.Forms.GroupBox();
+            checkBoxHDDS = new System.Windows.Forms.CheckBox();
+            checkBoxTreeSize = new System.Windows.Forms.CheckBox();
+            groupBox1 = new System.Windows.Forms.GroupBox();
+            checkBoxMyAsus = new System.Windows.Forms.CheckBox();
+            checkBoxHpSmart = new System.Windows.Forms.CheckBox();
+            checkBoxLenovoVantage = new System.Windows.Forms.CheckBox();
+            checkBoxNvidiaApp = new System.Windows.Forms.CheckBox();
+            checkBoxSublimeText = new System.Windows.Forms.CheckBox();
+            checkBox7ZIP = new System.Windows.Forms.CheckBox();
+            checkBoxTeams = new System.Windows.Forms.CheckBox();
+            checkBoxVLC = new System.Windows.Forms.CheckBox();
+            checkBoxAdobe = new System.Windows.Forms.CheckBox();
+            checkBoxLibreOffice = new System.Windows.Forms.CheckBox();
+            checkBoxChrome = new System.Windows.Forms.CheckBox();
+            InstallSelection = new System.Windows.Forms.Button();
+            tabWinUpdate = new System.Windows.Forms.TabPage();
+            buttonWinUpdate = new System.Windows.Forms.Button();
+            tabOptimisation = new System.Windows.Forms.TabPage();
+            groupBox7 = new System.Windows.Forms.GroupBox();
+            checkedListBoxServices = new System.Windows.Forms.CheckedListBox();
+            buttonOptimisation = new System.Windows.Forms.Button();
+            groupBox6 = new System.Windows.Forms.GroupBox();
+            checkedListBoxApps = new System.Windows.Forms.CheckedListBox();
+            buttonBloatWare = new System.Windows.Forms.Button();
+            _tabStress = new System.Windows.Forms.TabPage();
+            groupBox9 = new System.Windows.Forms.GroupBox();
+            _buttonStressGPU = new System.Windows.Forms.Button();
+            groupBox8 = new System.Windows.Forms.GroupBox();
+            _buttonStressCpu = new System.Windows.Forms.Button();
+            buttonStressBOTH = new System.Windows.Forms.Button();
+            tabPageVirus = new System.Windows.Forms.TabPage();
+            labelCpuTemp = new System.Windows.Forms.Label();
+            labelGpuTemp = new System.Windows.Forms.Label();
+            labelWindowsActivation = new System.Windows.Forms.Label();
+            labelCPURef = new System.Windows.Forms.Label();
+            labelGPURef = new System.Windows.Forms.Label();
+            _buttonActivation = new System.Windows.Forms.Button();
+            buttonCleanup = new System.Windows.Forms.Button();
             AllTabs.SuspendLayout();
             TabGeneral.SuspendLayout();
+            groupBox11.SuspendLayout();
             groupBox10.SuspendLayout();
             groupBox5.SuspendLayout();
             TabSoftwares.SuspendLayout();
@@ -803,6 +904,7 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             _tabStress.SuspendLayout();
             groupBox9.SuspendLayout();
             groupBox8.SuspendLayout();
+            tabPageVirus.SuspendLayout();
             SuspendLayout();
             // 
             // AllTabs
@@ -813,50 +915,82 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             AllTabs.Controls.Add(tabWinUpdate);
             AllTabs.Controls.Add(tabOptimisation);
             AllTabs.Controls.Add(_tabStress);
-            AllTabs.Dock = DockStyle.Top;
-            AllTabs.Location = new Point(0, 0);
+            AllTabs.Controls.Add(tabPageVirus);
+            AllTabs.Dock = System.Windows.Forms.DockStyle.Top;
+            AllTabs.Location = new System.Drawing.Point(0, 0);
             AllTabs.Name = "AllTabs";
             AllTabs.SelectedIndex = 0;
-            AllTabs.Size = new Size(897, 608);
+            AllTabs.Size = new System.Drawing.Size(897, 608);
             AllTabs.TabIndex = 0;
             // 
             // TabGeneral
             // 
+            TabGeneral.Controls.Add(buttonMaj);
+            TabGeneral.Controls.Add(groupBox11);
             TabGeneral.Controls.Add(groupBox10);
             TabGeneral.Controls.Add(groupBox5);
-            TabGeneral.Location = new Point(4, 24);
+            TabGeneral.Location = new System.Drawing.Point(4, 24);
             TabGeneral.Name = "TabGeneral";
-            TabGeneral.Padding = new Padding(3);
-            TabGeneral.Size = new Size(889, 580);
+            TabGeneral.Padding = new System.Windows.Forms.Padding(3);
+            TabGeneral.Size = new System.Drawing.Size(889, 580);
             TabGeneral.TabIndex = 0;
             TabGeneral.Text = "General";
             TabGeneral.UseVisualStyleBackColor = true;
+            // 
+            // buttonMaj
+            // 
+            buttonMaj.ForeColor = System.Drawing.Color.Green;
+            buttonMaj.Location = new System.Drawing.Point(290, 544);
+            buttonMaj.Name = "buttonMaj";
+            buttonMaj.Size = new System.Drawing.Size(307, 30);
+            buttonMaj.TabIndex = 6;
+            buttonMaj.Text = "MAJ";
+            buttonMaj.UseVisualStyleBackColor = true;
+            buttonMaj.Visible = false;
+            buttonMaj.Click += ButtonUpdate_Click;
+            // 
+            // groupBox11
+            // 
+            groupBox11.Controls.Add(labelManu);
+            groupBox11.Location = new System.Drawing.Point(520, 17);
+            groupBox11.Name = "groupBox11";
+            groupBox11.Size = new System.Drawing.Size(361, 251);
+            groupBox11.TabIndex = 3;
+            groupBox11.TabStop = false;
+            groupBox11.Text = "Système";
+            // 
+            // labelManu
+            // 
+            labelManu.Location = new System.Drawing.Point(6, 19);
+            labelManu.Name = "labelManu";
+            labelManu.Size = new System.Drawing.Size(262, 23);
+            labelManu.TabIndex = 2;
+            labelManu.Text = "Il est ou mon Manu ?";
             // 
             // groupBox10
             // 
             groupBox10.Controls.Add(label1);
             groupBox10.Controls.Add(buttonBasicInstallGeneral);
-            groupBox10.Location = new Point(19, 274);
+            groupBox10.Location = new System.Drawing.Point(19, 274);
             groupBox10.Name = "groupBox10";
-            groupBox10.Size = new Size(200, 161);
+            groupBox10.Size = new System.Drawing.Size(200, 161);
             groupBox10.TabIndex = 1;
             groupBox10.TabStop = false;
             groupBox10.Text = "Installation basique";
             // 
             // label1
             // 
-            label1.Location = new Point(6, 19);
+            label1.Location = new System.Drawing.Point(6, 19);
             label1.Name = "label1";
-            label1.Size = new Size(174, 103);
+            label1.Size = new System.Drawing.Size(174, 103);
             label1.TabIndex = 3;
-            label1.Text = ("Installation de VLC, Adobe, Chrome et LibreOffice. Lancement du script MAS d\'acti" +
-                           "vation Windows.    Lancement du powershell pour les MAJ Windows.");
+            label1.Text = ("Installation de VLC, Adobe, Chrome et LibreOffice. Lancement du script MAS d\'acti" + "vation Windows.    Lancement du powershell pour les MAJ Windows.");
             // 
             // buttonBasicInstallGeneral
             // 
-            buttonBasicInstallGeneral.Location = new Point(54, 125);
+            buttonBasicInstallGeneral.Location = new System.Drawing.Point(34, 123);
             buttonBasicInstallGeneral.Name = "buttonBasicInstallGeneral";
-            buttonBasicInstallGeneral.Size = new Size(75, 23);
+            buttonBasicInstallGeneral.Size = new System.Drawing.Size(126, 32);
             buttonBasicInstallGeneral.TabIndex = 2;
             buttonBasicInstallGeneral.Text = "Installer";
             buttonBasicInstallGeneral.UseVisualStyleBackColor = true;
@@ -864,58 +998,58 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // 
             // groupBox5
             // 
-            groupBox5.BackColor = Color.Transparent;
+            groupBox5.BackColor = System.Drawing.Color.Transparent;
             groupBox5.Controls.Add(labelDisk);
             groupBox5.Controls.Add(labelCPUCores);
             groupBox5.Controls.Add(labelRAM);
             groupBox5.Controls.Add(labelGPURef2);
             groupBox5.Controls.Add(labelCPURef2);
-            groupBox5.Location = new Point(19, 17);
+            groupBox5.Location = new System.Drawing.Point(19, 17);
             groupBox5.Name = "groupBox5";
-            groupBox5.Size = new Size(483, 251);
+            groupBox5.Size = new System.Drawing.Size(483, 251);
             groupBox5.TabIndex = 0;
             groupBox5.TabStop = false;
-            groupBox5.Text = "Informations système";
+            groupBox5.Text = "Composants";
             // 
             // labelDisk
             // 
-            labelDisk.Location = new Point(6, 120);
+            labelDisk.Location = new System.Drawing.Point(6, 120);
             labelDisk.Name = "labelDisk";
-            labelDisk.Size = new Size(439, 128);
+            labelDisk.Size = new System.Drawing.Size(439, 128);
             labelDisk.TabIndex = 8;
             labelDisk.Text = "DISK NOT FOUND";
             // 
             // labelCPUCores
             // 
-            labelCPUCores.Location = new Point(6, 35);
+            labelCPUCores.Location = new System.Drawing.Point(6, 35);
             labelCPUCores.Name = "labelCPUCores";
-            labelCPUCores.Size = new Size(439, 16);
+            labelCPUCores.Size = new System.Drawing.Size(439, 16);
             labelCPUCores.TabIndex = 7;
             labelCPUCores.Text = "CORES NOT FOUND";
-            labelCPUCores.TextAlign = ContentAlignment.MiddleLeft;
+            labelCPUCores.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             // 
             // labelRAM
             // 
-            labelRAM.Location = new Point(6, 91);
+            labelRAM.Location = new System.Drawing.Point(6, 91);
             labelRAM.Name = "labelRAM";
-            labelRAM.Size = new Size(439, 16);
+            labelRAM.Size = new System.Drawing.Size(439, 16);
             labelRAM.TabIndex = 6;
             labelRAM.Text = "RAM NOT FOUND";
             // 
             // labelGPURef2
             // 
-            labelGPURef2.Location = new Point(6, 63);
+            labelGPURef2.Location = new System.Drawing.Point(6, 63);
             labelGPURef2.Name = "labelGPURef2";
-            labelGPURef2.Size = new Size(439, 16);
+            labelGPURef2.Size = new System.Drawing.Size(439, 16);
             labelGPURef2.TabIndex = 5;
             labelGPURef2.Text = "GPU NOT FOUND";
-            labelGPURef2.TextAlign = ContentAlignment.MiddleLeft;
+            labelGPURef2.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             // 
             // labelCPURef2
             // 
-            labelCPURef2.Location = new Point(6, 19);
+            labelCPURef2.Location = new System.Drawing.Point(6, 19);
             labelCPURef2.Name = "labelCPURef2";
-            labelCPURef2.Size = new Size(439, 16);
+            labelCPURef2.Size = new System.Drawing.Size(439, 16);
             labelCPURef2.TabIndex = 4;
             labelCPURef2.Text = "CPU NOT FOUND";
             // 
@@ -926,10 +1060,10 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             TabSoftwares.Controls.Add(groupBox2);
             TabSoftwares.Controls.Add(groupBox1);
             TabSoftwares.Controls.Add(InstallSelection);
-            TabSoftwares.Location = new Point(4, 24);
+            TabSoftwares.Location = new System.Drawing.Point(4, 24);
             TabSoftwares.Name = "TabSoftwares";
-            TabSoftwares.Padding = new Padding(3);
-            TabSoftwares.Size = new Size(889, 580);
+            TabSoftwares.Padding = new System.Windows.Forms.Padding(3);
+            TabSoftwares.Size = new System.Drawing.Size(889, 580);
             TabSoftwares.TabIndex = 1;
             TabSoftwares.Text = "Softwares";
             TabSoftwares.UseVisualStyleBackColor = true;
@@ -938,27 +1072,27 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // 
             groupBox4.Controls.Add(checkBoxSteam);
             groupBox4.Controls.Add(checkBoxDiscord);
-            groupBox4.Location = new Point(499, 155);
+            groupBox4.Location = new System.Drawing.Point(499, 155);
             groupBox4.Name = "groupBox4";
-            groupBox4.Size = new Size(155, 334);
+            groupBox4.Size = new System.Drawing.Size(155, 334);
             groupBox4.TabIndex = 14;
             groupBox4.TabStop = false;
             groupBox4.Text = "Gaming";
             // 
             // checkBoxSteam
             // 
-            checkBoxSteam.Location = new Point(6, 22);
+            checkBoxSteam.Location = new System.Drawing.Point(6, 22);
             checkBoxSteam.Name = "checkBoxSteam";
-            checkBoxSteam.Size = new Size(104, 24);
+            checkBoxSteam.Size = new System.Drawing.Size(104, 24);
             checkBoxSteam.TabIndex = 9;
             checkBoxSteam.Text = "Steam";
             checkBoxSteam.UseVisualStyleBackColor = true;
             // 
             // checkBoxDiscord
             // 
-            checkBoxDiscord.Location = new Point(6, 52);
+            checkBoxDiscord.Location = new System.Drawing.Point(6, 52);
             checkBoxDiscord.Name = "checkBoxDiscord";
-            checkBoxDiscord.Size = new Size(104, 24);
+            checkBoxDiscord.Size = new System.Drawing.Size(104, 24);
             checkBoxDiscord.TabIndex = 10;
             checkBoxDiscord.Text = "Discord";
             checkBoxDiscord.UseVisualStyleBackColor = true;
@@ -967,27 +1101,27 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // 
             groupBox3.Controls.Add(checkBoxKaspersky);
             groupBox3.Controls.Add(checkBoxBitdefender);
-            groupBox3.Location = new Point(338, 155);
+            groupBox3.Location = new System.Drawing.Point(338, 155);
             groupBox3.Name = "groupBox3";
-            groupBox3.Size = new Size(155, 334);
+            groupBox3.Size = new System.Drawing.Size(155, 334);
             groupBox3.TabIndex = 13;
             groupBox3.TabStop = false;
             groupBox3.Text = "Antivirus";
             // 
             // checkBoxKaspersky
             // 
-            checkBoxKaspersky.Location = new Point(6, 22);
+            checkBoxKaspersky.Location = new System.Drawing.Point(6, 22);
             checkBoxKaspersky.Name = "checkBoxKaspersky";
-            checkBoxKaspersky.Size = new Size(104, 24);
+            checkBoxKaspersky.Size = new System.Drawing.Size(104, 24);
             checkBoxKaspersky.TabIndex = 7;
             checkBoxKaspersky.Text = "Kaspersky";
             checkBoxKaspersky.UseVisualStyleBackColor = true;
             // 
             // checkBoxBitdefender
             // 
-            checkBoxBitdefender.Location = new Point(6, 52);
+            checkBoxBitdefender.Location = new System.Drawing.Point(6, 52);
             checkBoxBitdefender.Name = "checkBoxBitdefender";
-            checkBoxBitdefender.Size = new Size(104, 24);
+            checkBoxBitdefender.Size = new System.Drawing.Size(104, 24);
             checkBoxBitdefender.TabIndex = 8;
             checkBoxBitdefender.Text = "Bit Defender";
             checkBoxBitdefender.UseVisualStyleBackColor = true;
@@ -996,33 +1130,37 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // 
             groupBox2.Controls.Add(checkBoxHDDS);
             groupBox2.Controls.Add(checkBoxTreeSize);
-            groupBox2.Location = new Point(660, 155);
+            groupBox2.Location = new System.Drawing.Point(660, 155);
             groupBox2.Name = "groupBox2";
-            groupBox2.Size = new Size(155, 334);
+            groupBox2.Size = new System.Drawing.Size(155, 334);
             groupBox2.TabIndex = 12;
             groupBox2.TabStop = false;
             groupBox2.Text = "Autres";
             // 
             // checkBoxHDDS
             // 
-            checkBoxHDDS.Location = new Point(6, 52);
+            checkBoxHDDS.Location = new System.Drawing.Point(6, 52);
             checkBoxHDDS.Name = "checkBoxHDDS";
-            checkBoxHDDS.Size = new Size(104, 24);
+            checkBoxHDDS.Size = new System.Drawing.Size(104, 24);
             checkBoxHDDS.TabIndex = 1;
             checkBoxHDDS.Text = "HDD Sentinel";
             checkBoxHDDS.UseVisualStyleBackColor = true;
             // 
             // checkBoxTreeSize
             // 
-            checkBoxTreeSize.Location = new Point(6, 22);
+            checkBoxTreeSize.Location = new System.Drawing.Point(6, 22);
             checkBoxTreeSize.Name = "checkBoxTreeSize";
-            checkBoxTreeSize.Size = new Size(104, 24);
+            checkBoxTreeSize.Size = new System.Drawing.Size(104, 24);
             checkBoxTreeSize.TabIndex = 0;
             checkBoxTreeSize.Text = "TreeSize";
             checkBoxTreeSize.UseVisualStyleBackColor = true;
             // 
             // groupBox1
             // 
+            groupBox1.Controls.Add(checkBoxMyAsus);
+            groupBox1.Controls.Add(checkBoxHpSmart);
+            groupBox1.Controls.Add(checkBoxLenovoVantage);
+            groupBox1.Controls.Add(checkBoxNvidiaApp);
             groupBox1.Controls.Add(checkBoxSublimeText);
             groupBox1.Controls.Add(checkBox7ZIP);
             groupBox1.Controls.Add(checkBoxTeams);
@@ -1030,36 +1168,72 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             groupBox1.Controls.Add(checkBoxAdobe);
             groupBox1.Controls.Add(checkBoxLibreOffice);
             groupBox1.Controls.Add(checkBoxChrome);
-            groupBox1.Location = new Point(16, 155);
+            groupBox1.Location = new System.Drawing.Point(16, 155);
             groupBox1.Name = "groupBox1";
-            groupBox1.Size = new Size(316, 334);
+            groupBox1.Size = new System.Drawing.Size(316, 334);
             groupBox1.TabIndex = 11;
             groupBox1.TabStop = false;
             groupBox1.Text = "Setup de base";
             // 
+            // checkBoxMyAsus
+            // 
+            checkBoxMyAsus.Location = new System.Drawing.Point(6, 216);
+            checkBoxMyAsus.Name = "checkBoxMyAsus";
+            checkBoxMyAsus.Size = new System.Drawing.Size(124, 24);
+            checkBoxMyAsus.TabIndex = 10;
+            checkBoxMyAsus.Text = "My Asus";
+            checkBoxMyAsus.UseVisualStyleBackColor = true;
+            // 
+            // checkBoxHpSmart
+            // 
+            checkBoxHpSmart.Location = new System.Drawing.Point(186, 186);
+            checkBoxHpSmart.Name = "checkBoxHpSmart";
+            checkBoxHpSmart.Size = new System.Drawing.Size(124, 24);
+            checkBoxHpSmart.TabIndex = 9;
+            checkBoxHpSmart.Text = "HP Smart";
+            checkBoxHpSmart.UseVisualStyleBackColor = true;
+            // 
+            // checkBoxLenovoVantage
+            // 
+            checkBoxLenovoVantage.Location = new System.Drawing.Point(6, 186);
+            checkBoxLenovoVantage.Name = "checkBoxLenovoVantage";
+            checkBoxLenovoVantage.Size = new System.Drawing.Size(124, 24);
+            checkBoxLenovoVantage.TabIndex = 8;
+            checkBoxLenovoVantage.Text = "Lenovo Vantage";
+            checkBoxLenovoVantage.UseVisualStyleBackColor = true;
+            // 
+            // checkBoxNvidiaApp
+            // 
+            checkBoxNvidiaApp.Location = new System.Drawing.Point(6, 295);
+            checkBoxNvidiaApp.Name = "checkBoxNvidiaApp";
+            checkBoxNvidiaApp.Size = new System.Drawing.Size(104, 24);
+            checkBoxNvidiaApp.TabIndex = 7;
+            checkBoxNvidiaApp.Text = "Nvidia App";
+            checkBoxNvidiaApp.UseVisualStyleBackColor = true;
+            // 
             // checkBoxSublimeText
             // 
-            checkBoxSublimeText.Location = new Point(6, 112);
+            checkBoxSublimeText.Location = new System.Drawing.Point(6, 112);
             checkBoxSublimeText.Name = "checkBoxSublimeText";
-            checkBoxSublimeText.Size = new Size(104, 24);
+            checkBoxSublimeText.Size = new System.Drawing.Size(104, 24);
             checkBoxSublimeText.TabIndex = 6;
             checkBoxSublimeText.Text = "Sublime Text";
             checkBoxSublimeText.UseVisualStyleBackColor = true;
             // 
             // checkBox7ZIP
             // 
-            checkBox7ZIP.Location = new Point(147, 82);
+            checkBox7ZIP.Location = new System.Drawing.Point(147, 82);
             checkBox7ZIP.Name = "checkBox7ZIP";
-            checkBox7ZIP.Size = new Size(104, 24);
+            checkBox7ZIP.Size = new System.Drawing.Size(104, 24);
             checkBox7ZIP.TabIndex = 5;
             checkBox7ZIP.Text = "7ZIP";
             checkBox7ZIP.UseVisualStyleBackColor = true;
             // 
             // checkBoxTeams
             // 
-            checkBoxTeams.Location = new Point(6, 82);
+            checkBoxTeams.Location = new System.Drawing.Point(6, 82);
             checkBoxTeams.Name = "checkBoxTeams";
-            checkBoxTeams.Size = new Size(104, 24);
+            checkBoxTeams.Size = new System.Drawing.Size(104, 24);
             checkBoxTeams.TabIndex = 5;
             checkBoxTeams.Text = "Teams";
             checkBoxTeams.UseVisualStyleBackColor = true;
@@ -1067,11 +1241,9 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // checkBoxVLC
             // 
             checkBoxVLC.AccessibleName = "checkBoxVLC";
-            checkBoxVLC.Checked = true;
-            checkBoxVLC.CheckState = CheckState.Checked;
-            checkBoxVLC.Location = new Point(6, 22);
+            checkBoxVLC.Location = new System.Drawing.Point(6, 22);
             checkBoxVLC.Name = "checkBoxVLC";
-            checkBoxVLC.Size = new Size(104, 24);
+            checkBoxVLC.Size = new System.Drawing.Size(104, 24);
             checkBoxVLC.TabIndex = 1;
             checkBoxVLC.Text = "VLC";
             checkBoxVLC.UseVisualStyleBackColor = true;
@@ -1079,42 +1251,36 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // checkBoxAdobe
             // 
             checkBoxAdobe.AccessibleName = "checkBoxAdobe";
-            checkBoxAdobe.Checked = true;
-            checkBoxAdobe.CheckState = CheckState.Checked;
-            checkBoxAdobe.Location = new Point(6, 52);
+            checkBoxAdobe.Location = new System.Drawing.Point(6, 52);
             checkBoxAdobe.Name = "checkBoxAdobe";
-            checkBoxAdobe.Size = new Size(104, 24);
+            checkBoxAdobe.Size = new System.Drawing.Size(104, 24);
             checkBoxAdobe.TabIndex = 2;
             checkBoxAdobe.Text = "Adobe";
             checkBoxAdobe.UseVisualStyleBackColor = true;
             // 
             // checkBoxLibreOffice
             // 
-            checkBoxLibreOffice.Checked = true;
-            checkBoxLibreOffice.CheckState = CheckState.Checked;
-            checkBoxLibreOffice.Location = new Point(147, 22);
+            checkBoxLibreOffice.Location = new System.Drawing.Point(147, 22);
             checkBoxLibreOffice.Name = "checkBoxLibreOffice";
-            checkBoxLibreOffice.Size = new Size(104, 24);
+            checkBoxLibreOffice.Size = new System.Drawing.Size(104, 24);
             checkBoxLibreOffice.TabIndex = 3;
             checkBoxLibreOffice.Text = "Libre Office";
             checkBoxLibreOffice.UseVisualStyleBackColor = true;
             // 
             // checkBoxChrome
             // 
-            checkBoxChrome.Checked = true;
-            checkBoxChrome.CheckState = CheckState.Checked;
-            checkBoxChrome.Location = new Point(147, 52);
+            checkBoxChrome.Location = new System.Drawing.Point(147, 52);
             checkBoxChrome.Name = "checkBoxChrome";
-            checkBoxChrome.Size = new Size(104, 24);
+            checkBoxChrome.Size = new System.Drawing.Size(104, 24);
             checkBoxChrome.TabIndex = 4;
             checkBoxChrome.Text = "Chrome";
             checkBoxChrome.UseVisualStyleBackColor = true;
             // 
             // InstallSelection
             // 
-            InstallSelection.Location = new Point(6, 6);
+            InstallSelection.Location = new System.Drawing.Point(6, 6);
             InstallSelection.Name = "InstallSelection";
-            InstallSelection.Size = new Size(202, 31);
+            InstallSelection.Size = new System.Drawing.Size(202, 31);
             InstallSelection.TabIndex = 0;
             InstallSelection.Text = "Installer la selection";
             InstallSelection.UseVisualStyleBackColor = true;
@@ -1123,19 +1289,19 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // tabWinUpdate
             // 
             tabWinUpdate.Controls.Add(buttonWinUpdate);
-            tabWinUpdate.Location = new Point(4, 24);
+            tabWinUpdate.Location = new System.Drawing.Point(4, 24);
             tabWinUpdate.Name = "tabWinUpdate";
-            tabWinUpdate.Padding = new Padding(3);
-            tabWinUpdate.Size = new Size(889, 580);
+            tabWinUpdate.Padding = new System.Windows.Forms.Padding(3);
+            tabWinUpdate.Size = new System.Drawing.Size(889, 580);
             tabWinUpdate.TabIndex = 2;
             tabWinUpdate.Text = "Windows";
             tabWinUpdate.UseVisualStyleBackColor = true;
             // 
             // buttonWinUpdate
             // 
-            buttonWinUpdate.Location = new Point(6, 6);
+            buttonWinUpdate.Location = new System.Drawing.Point(6, 6);
             buttonWinUpdate.Name = "buttonWinUpdate";
-            buttonWinUpdate.Size = new Size(202, 31);
+            buttonWinUpdate.Size = new System.Drawing.Size(202, 31);
             buttonWinUpdate.TabIndex = 0;
             buttonWinUpdate.Text = "Windows Update";
             buttonWinUpdate.UseVisualStyleBackColor = true;
@@ -1145,10 +1311,10 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // 
             tabOptimisation.Controls.Add(groupBox7);
             tabOptimisation.Controls.Add(groupBox6);
-            tabOptimisation.Location = new Point(4, 24);
+            tabOptimisation.Location = new System.Drawing.Point(4, 24);
             tabOptimisation.Name = "tabOptimisation";
-            tabOptimisation.Padding = new Padding(3);
-            tabOptimisation.Size = new Size(889, 580);
+            tabOptimisation.Padding = new System.Windows.Forms.Padding(3);
+            tabOptimisation.Size = new System.Drawing.Size(889, 580);
             tabOptimisation.TabIndex = 3;
             tabOptimisation.Text = "Optimisation";
             tabOptimisation.UseVisualStyleBackColor = true;
@@ -1157,9 +1323,9 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // 
             groupBox7.Controls.Add(checkedListBoxServices);
             groupBox7.Controls.Add(buttonOptimisation);
-            groupBox7.Location = new Point(485, 15);
+            groupBox7.Location = new System.Drawing.Point(485, 15);
             groupBox7.Name = "groupBox7";
-            groupBox7.Size = new Size(396, 549);
+            groupBox7.Size = new System.Drawing.Size(396, 549);
             groupBox7.TabIndex = 3;
             groupBox7.TabStop = false;
             groupBox7.Text = "Services";
@@ -1167,16 +1333,16 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // checkedListBoxServices
             // 
             checkedListBoxServices.FormattingEnabled = true;
-            checkedListBoxServices.Location = new Point(6, 56);
+            checkedListBoxServices.Location = new System.Drawing.Point(6, 56);
             checkedListBoxServices.Name = "checkedListBoxServices";
-            checkedListBoxServices.Size = new Size(384, 472);
+            checkedListBoxServices.Size = new System.Drawing.Size(384, 472);
             checkedListBoxServices.TabIndex = 2;
             // 
             // buttonOptimisation
             // 
-            buttonOptimisation.Location = new Point(121, 22);
+            buttonOptimisation.Location = new System.Drawing.Point(121, 22);
             buttonOptimisation.Name = "buttonOptimisation";
-            buttonOptimisation.Size = new Size(166, 28);
+            buttonOptimisation.Size = new System.Drawing.Size(166, 28);
             buttonOptimisation.TabIndex = 1;
             buttonOptimisation.Text = "Optimisation des services";
             buttonOptimisation.UseVisualStyleBackColor = true;
@@ -1186,9 +1352,9 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // 
             groupBox6.Controls.Add(checkedListBoxApps);
             groupBox6.Controls.Add(buttonBloatWare);
-            groupBox6.Location = new Point(12, 15);
+            groupBox6.Location = new System.Drawing.Point(12, 15);
             groupBox6.Name = "groupBox6";
-            groupBox6.Size = new Size(396, 549);
+            groupBox6.Size = new System.Drawing.Size(396, 549);
             groupBox6.TabIndex = 2;
             groupBox6.TabStop = false;
             groupBox6.Text = "Bloatwares";
@@ -1196,16 +1362,16 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // checkedListBoxApps
             // 
             checkedListBoxApps.FormattingEnabled = true;
-            checkedListBoxApps.Location = new Point(6, 56);
+            checkedListBoxApps.Location = new System.Drawing.Point(6, 56);
             checkedListBoxApps.Name = "checkedListBoxApps";
-            checkedListBoxApps.Size = new Size(384, 472);
+            checkedListBoxApps.Size = new System.Drawing.Size(384, 472);
             checkedListBoxApps.TabIndex = 1;
             // 
             // buttonBloatWare
             // 
-            buttonBloatWare.Location = new Point(114, 22);
+            buttonBloatWare.Location = new System.Drawing.Point(114, 22);
             buttonBloatWare.Name = "buttonBloatWare";
-            buttonBloatWare.Size = new Size(166, 28);
+            buttonBloatWare.Size = new System.Drawing.Size(166, 28);
             buttonBloatWare.TabIndex = 0;
             buttonBloatWare.Text = "Remove Bloatwares";
             buttonBloatWare.UseVisualStyleBackColor = true;
@@ -1216,10 +1382,10 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             _tabStress.Controls.Add(groupBox9);
             _tabStress.Controls.Add(groupBox8);
             _tabStress.Controls.Add(buttonStressBOTH);
-            _tabStress.Location = new Point(4, 24);
+            _tabStress.Location = new System.Drawing.Point(4, 24);
             _tabStress.Name = "_tabStress";
-            _tabStress.Padding = new Padding(3);
-            _tabStress.Size = new Size(889, 580);
+            _tabStress.Padding = new System.Windows.Forms.Padding(3);
+            _tabStress.Size = new System.Drawing.Size(889, 580);
             _tabStress.TabIndex = 4;
             _tabStress.Text = "Stress";
             _tabStress.UseVisualStyleBackColor = true;
@@ -1227,18 +1393,18 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // groupBox9
             // 
             groupBox9.Controls.Add(_buttonStressGPU);
-            groupBox9.Location = new Point(218, 16);
+            groupBox9.Location = new System.Drawing.Point(218, 16);
             groupBox9.Name = "groupBox9";
-            groupBox9.Size = new Size(200, 100);
+            groupBox9.Size = new System.Drawing.Size(200, 100);
             groupBox9.TabIndex = 4;
             groupBox9.TabStop = false;
             groupBox9.Text = "GPU Stress";
             // 
             // _buttonStressGPU
             // 
-            _buttonStressGPU.Location = new Point(6, 22);
+            _buttonStressGPU.Location = new System.Drawing.Point(6, 22);
             _buttonStressGPU.Name = "_buttonStressGPU";
-            _buttonStressGPU.Size = new Size(141, 23);
+            _buttonStressGPU.Size = new System.Drawing.Size(141, 23);
             _buttonStressGPU.TabIndex = 1;
             _buttonStressGPU.Text = "Furmark 2";
             _buttonStressGPU.UseVisualStyleBackColor = true;
@@ -1247,18 +1413,18 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // groupBox8
             // 
             groupBox8.Controls.Add(_buttonStressCpu);
-            groupBox8.Location = new Point(12, 16);
+            groupBox8.Location = new System.Drawing.Point(12, 16);
             groupBox8.Name = "groupBox8";
-            groupBox8.Size = new Size(200, 100);
+            groupBox8.Size = new System.Drawing.Size(200, 100);
             groupBox8.TabIndex = 3;
             groupBox8.TabStop = false;
             groupBox8.Text = "CPU Stess";
             // 
             // _buttonStressCpu
             // 
-            _buttonStressCpu.Location = new Point(6, 22);
+            _buttonStressCpu.Location = new System.Drawing.Point(6, 22);
             _buttonStressCpu.Name = "_buttonStressCpu";
-            _buttonStressCpu.Size = new Size(141, 23);
+            _buttonStressCpu.Size = new System.Drawing.Size(141, 23);
             _buttonStressCpu.TabIndex = 0;
             _buttonStressCpu.Text = "_buttonStressCpu";
             _buttonStressCpu.UseVisualStyleBackColor = true;
@@ -1267,69 +1433,90 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             // buttonStressBOTH
             // 
             buttonStressBOTH.Enabled = false;
-            buttonStressBOTH.Location = new Point(131, 122);
+            buttonStressBOTH.Location = new System.Drawing.Point(131, 122);
             buttonStressBOTH.Name = "buttonStressBOTH";
-            buttonStressBOTH.Size = new Size(180, 23);
+            buttonStressBOTH.Size = new System.Drawing.Size(180, 23);
             buttonStressBOTH.TabIndex = 2;
             buttonStressBOTH.Text = "buttonStressBOTH";
             buttonStressBOTH.UseVisualStyleBackColor = true;
             buttonStressBOTH.Click += BtnStressBoth_Click;
             // 
+            // tabPageVirus
+            // 
+            tabPageVirus.Controls.Add(buttonCleanup);
+            tabPageVirus.Font = new System.Drawing.Font("Segoe UI", 9F);
+            tabPageVirus.Location = new System.Drawing.Point(4, 24);
+            tabPageVirus.Name = "tabPageVirus";
+            tabPageVirus.Padding = new System.Windows.Forms.Padding(3);
+            tabPageVirus.Size = new System.Drawing.Size(889, 580);
+            tabPageVirus.TabIndex = 5;
+            tabPageVirus.Text = "Virus";
+            tabPageVirus.UseVisualStyleBackColor = true;
+            // 
             // labelCpuTemp
             // 
             labelCpuTemp.AccessibleName = "labelCpuTemp";
-            labelCpuTemp.Location = new Point(16, 611);
+            labelCpuTemp.Location = new System.Drawing.Point(16, 611);
             labelCpuTemp.Name = "labelCpuTemp";
-            labelCpuTemp.Size = new Size(100, 16);
+            labelCpuTemp.Size = new System.Drawing.Size(100, 16);
             labelCpuTemp.TabIndex = 1;
             labelCpuTemp.Text = "CPU : -- °C";
             // 
             // labelGpuTemp
             // 
             labelGpuTemp.AccessibleName = "labelGpuTemp";
-            labelGpuTemp.Location = new Point(16, 627);
+            labelGpuTemp.Location = new System.Drawing.Point(16, 627);
             labelGpuTemp.Name = "labelGpuTemp";
-            labelGpuTemp.Size = new Size(100, 16);
+            labelGpuTemp.Size = new System.Drawing.Size(100, 16);
             labelGpuTemp.TabIndex = 2;
             labelGpuTemp.Text = "GPU : -- °C";
             // 
             // labelWindowsActivation
             // 
-            labelWindowsActivation.Location = new Point(567, 620);
+            labelWindowsActivation.Location = new System.Drawing.Point(567, 620);
             labelWindowsActivation.Name = "labelWindowsActivation";
-            labelWindowsActivation.Size = new Size(176, 23);
+            labelWindowsActivation.Size = new System.Drawing.Size(176, 23);
             labelWindowsActivation.TabIndex = 0;
             labelWindowsActivation.Text = "Windows :";
             // 
             // labelCPURef
             // 
-            labelCPURef.Location = new Point(122, 611);
+            labelCPURef.Location = new System.Drawing.Point(122, 611);
             labelCPURef.Name = "labelCPURef";
-            labelCPURef.Size = new Size(439, 16);
+            labelCPURef.Size = new System.Drawing.Size(439, 16);
             labelCPURef.TabIndex = 3;
             labelCPURef.Text = "CPU NOT FOUND";
             // 
             // labelGPURef
             // 
-            labelGPURef.Location = new Point(122, 627);
+            labelGPURef.Location = new System.Drawing.Point(122, 627);
             labelGPURef.Name = "labelGPURef";
-            labelGPURef.Size = new Size(439, 16);
+            labelGPURef.Size = new System.Drawing.Size(439, 16);
             labelGPURef.TabIndex = 4;
             labelGPURef.Text = "GPU NOT FOUND";
             // 
             // _buttonActivation
             // 
-            _buttonActivation.Location = new Point(775, 616);
+            _buttonActivation.Location = new System.Drawing.Point(711, 616);
             _buttonActivation.Name = "_buttonActivation";
-            _buttonActivation.Size = new Size(75, 23);
+            _buttonActivation.Size = new System.Drawing.Size(75, 23);
             _buttonActivation.TabIndex = 5;
             _buttonActivation.Text = "Activer";
             _buttonActivation.UseVisualStyleBackColor = true;
             _buttonActivation.Click += BtnActivateWindows_Click;
             // 
+            // buttonCleanup
+            // 
+            buttonCleanup.Location = new System.Drawing.Point(12, 15);
+            buttonCleanup.Name = "buttonCleanup";
+            buttonCleanup.Size = new System.Drawing.Size(869, 559);
+            buttonCleanup.TabIndex = 0;
+            buttonCleanup.Text = "Nettoyer";
+            buttonCleanup.UseVisualStyleBackColor = true;
+            // 
             // MainForm
             // 
-            ClientSize = new Size(897, 649);
+            ClientSize = new System.Drawing.Size(897, 649);
             Controls.Add(_buttonActivation);
             Controls.Add(labelGPURef);
             Controls.Add(labelCPURef);
@@ -1337,14 +1524,15 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             Controls.Add(labelGpuTemp);
             Controls.Add(labelCpuTemp);
             Controls.Add(AllTabs);
-            FormBorderStyle = FormBorderStyle.Fixed3D;
-            Icon = ((Icon)resources.GetObject("$this.Icon"));
+            FormBorderStyle = System.Windows.Forms.FormBorderStyle.Fixed3D;
+            Icon = ((System.Drawing.Icon)resources.GetObject("$this.Icon"));
             MaximizeBox = false;
-            StartPosition = FormStartPosition.CenterScreen;
+            StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             Text = "Savior";
             Load += MainForm_Load;
             AllTabs.ResumeLayout(false);
             TabGeneral.ResumeLayout(false);
+            groupBox11.ResumeLayout(false);
             groupBox10.ResumeLayout(false);
             groupBox5.ResumeLayout(false);
             TabSoftwares.ResumeLayout(false);
@@ -1359,40 +1547,34 @@ Get-WmiObject -Query 'SELECT Name, LicenseStatus FROM SoftwareLicensingProduct W
             _tabStress.ResumeLayout(false);
             groupBox9.ResumeLayout(false);
             groupBox8.ResumeLayout(false);
+            tabPageVirus.ResumeLayout(false);
             ResumeLayout(false);
         }
 
+        private System.Windows.Forms.Button buttonCleanup;
+
+        private System.Windows.Forms.TabPage tabPageVirus;
+
+        private System.Windows.Forms.Button buttonMaj;
+        private System.Windows.Forms.GroupBox groupBox11;
 
         private Label label1;
-
-        private Button buttonBasicInstallGeneral;
-
+        private System.Windows.Forms.Button buttonBasicInstallGeneral;
         private GroupBox groupBox10;
-
         private GroupBox groupBox8;
         private GroupBox groupBox9;
-
-
         private GroupBox groupBox6;
         private GroupBox groupBox7;
-
         private TabPage tabOptimisation;
-
         private TabPage tabWinUpdate;
-
-        private GroupBox groupBox5;
-
+        private System.Windows.Forms.GroupBox groupBox5;
         private GroupBox groupBox3;
         private GroupBox groupBox4;
-
         private GroupBox groupBox2;
-
-        private GroupBox groupBox1;
-
+        private System.Windows.Forms.GroupBox groupBox1;
         private Button InstallSelection;
-
-        private TabControl AllTabs;
-        private TabPage TabGeneral;
+        private System.Windows.Forms.TabControl AllTabs;
+        private System.Windows.Forms.TabPage TabGeneral;
         private TabPage TabSoftwares;
     }
 }
